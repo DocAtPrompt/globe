@@ -98,6 +98,7 @@ pub struct AppState {
     pub help_visible: bool,
     pub clouds_visible: bool,
     pub equator_visible: bool,
+    pub meridian_visible: bool,
     /// Verhältnis cell_height / cell_width. Standard 2.0, justierbar
     /// damit die Sphere bei real anders proportionierten Fonts rund bleibt.
     pub cell_aspect: f64,
@@ -125,6 +126,7 @@ impl AppState {
             help_visible: false,
             clouds_visible: true,
             equator_visible: false,
+            meridian_visible: false,
             cell_aspect: cell_aspect.clamp(CELL_ASPECT_MIN, CELL_ASPECT_MAX),
             earth_rotation_rad: 0.0,
             freeze_anchor: None,
@@ -263,6 +265,10 @@ impl AppState {
         self.equator_visible = !self.equator_visible;
     }
 
+    pub fn handle_meridian_toggle(&mut self) {
+        self.meridian_visible = !self.meridian_visible;
+    }
+
     pub fn handle_cell_aspect_inc(&mut self) {
         self.cell_aspect = (self.cell_aspect + CELL_ASPECT_STEP).min(CELL_ASPECT_MAX);
     }
@@ -355,6 +361,7 @@ impl AppState {
                     self.camera.distance,
                     self.clouds_visible,
                     self.equator_visible,
+                    self.meridian_visible,
                 );
                 let bg = shade_color(
                     &ray_dn,
@@ -365,6 +372,7 @@ impl AppState {
                     self.camera.distance,
                     self.clouds_visible,
                     self.equator_visible,
+                    self.meridian_visible,
                 );
                 fb.put(x, y, Cell::new('▀', fg, bg));
             }
@@ -396,6 +404,7 @@ impl AppState {
                     self.camera.distance,
                     color,
                     self.equator_visible,
+                    self.meridian_visible,
                 );
                 fb.put(x, y, Cell::new(ch, if color { fg } else { 15 }, 16));
             }
@@ -519,6 +528,7 @@ impl AppState {
             "  m           Modus blocks/ascii/plain",
             "  c           Wolken-Layer ein/aus",
             "  e           Äquator-Linie ein/aus",
+            "  g           Greenwich-Meridian ein/aus",
             "  ( )         Cell-Aspect anpassen (Globus runder)",
             "  r           Defaults zurück (Position bleibt)",
             "  ?           Hilfe ein/aus",
@@ -569,6 +579,8 @@ impl AppState {
 /// Lat-Schwelle für die Äquator-Linie. 0.012 entspricht ≈ 0.69°
 /// (auf der Sphere ist y = sin(lat), bei kleinem Lat näherungsweise identisch).
 const EQUATOR_HALF_WIDTH: f64 = 0.012;
+/// Lon-Schwelle für den Greenwich-Meridian in Radian.
+const MERIDIAN_HALF_WIDTH: f64 = 0.012;
 
 fn shade_color(
     ray: &Ray,
@@ -579,6 +591,7 @@ fn shade_color(
     cam_distance: f64,
     clouds_visible: bool,
     equator_visible: bool,
+    meridian_visible: bool,
 ) -> u8 {
     let earth = ray_sphere(ray, 1.0);
     if let Some(hit) = earth {
@@ -618,10 +631,13 @@ fn shade_color(
                 return rgb_to_ansi(245, 200, 90);
             }
         }
-        // Äquator-Overlay: dünner gelber Streifen entlang lat=0
+        // Geo-Linien-Overlay
         let mut out = final_rgb;
         if equator_visible && hit.point.1.abs() < EQUATOR_HALF_WIDTH {
             out = mix_rgb_u8(out, (255, 220, 60), 0.7);
+        }
+        if meridian_visible && lon.abs() < MERIDIAN_HALF_WIDTH {
+            out = mix_rgb_u8(out, (110, 200, 255), 0.7);
         }
         rgb_to_ansi(out.0, out.1, out.2)
     } else {
@@ -669,6 +685,7 @@ fn shade_ascii(
     cam_distance: f64,
     color: bool,
     equator_visible: bool,
+    meridian_visible: bool,
 ) -> (char, u8) {
     let earth = ray_sphere(ray, 1.0);
     if let Some(hit) = earth {
@@ -691,14 +708,22 @@ fn shade_ascii(
         let lambert = raw.max(0.0).powf(ASCII_GAMMA);
         let visual = (lambert * class_albedo(class)).clamp(0.0, 1.0);
         let idx = ((visual * (RAMP.len() as f64 - 0.01)) as usize).min(RAMP.len() - 1);
-        let mut ch = RAMP[idx];
         let on_equator = equator_visible && hit.point.1.abs() < EQUATOR_HALF_WIDTH;
-        if on_equator {
-            ch = '=';
-        }
+        let on_meridian = meridian_visible && lon.abs() < MERIDIAN_HALF_WIDTH;
+        let ch = if on_equator && on_meridian {
+            '+'
+        } else if on_equator {
+            '='
+        } else if on_meridian {
+            '|'
+        } else {
+            RAMP[idx]
+        };
         let fg = if color {
             if on_equator {
                 rgb_to_ansi(255, 220, 60)
+            } else if on_meridian {
+                rgb_to_ansi(110, 200, 255)
             } else {
                 let day = palette_day(class);
                 let r = (day.0 as f64 * (0.3 + 0.7 * lambert)) as u8;
