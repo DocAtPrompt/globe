@@ -76,8 +76,10 @@ pub fn ray_for_sub_pixel(
     let origin = cam_dir.mul(cam.distance);
     let forward = cam_dir.mul(-1.0);
     let world_up = V3(0.0, 1.0, 0.0);
-    let right = forward.cross(world_up).norm();
-    let up = right.cross(forward).norm();
+    // Geographisches "rechts" = nach Osten: right = up × forward (nicht forward × up).
+    // Sonst zeigt das Bild horizontal gespiegelt — Indien links statt rechts von Afrika.
+    let right = world_up.cross(forward).norm();
+    let up = forward.cross(right).norm();
 
     let dir = forward.add(right.mul(u)).add(up.mul(v)).norm();
     Ray { origin, dir }
@@ -287,8 +289,9 @@ pub fn project(p: V3, cam: &Camera, width: f64, sub_height: f64) -> Option<(f64,
     let origin = cam_dir.mul(cam.distance);
     let forward = cam_dir.mul(-1.0);
     let world_up = V3(0.0, 1.0, 0.0);
-    let right = forward.cross(world_up).norm();
-    let up = right.cross(forward).norm();
+    // Selbe Right/Up-Konvention wie in `ray_for_sub_pixel`.
+    let right = world_up.cross(forward).norm();
+    let up = forward.cross(right).norm();
 
     let d = p.sub(origin);
     let z = d.dot(forward);
