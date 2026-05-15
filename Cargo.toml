@@ -1,0 +1,30 @@
+[package]
+name = "globe"
+version = "0.1.0"
+edition = "2021"
+description = "Rotating ASCII globe in the terminal — live sunlight, half-blocks, 256 colors"
+license = "MIT"
+
+[dependencies]
+crossterm = "0.27"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+iana-time-zone = "0.1"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+miniz_oxide = "0.7"
+
+[dev-dependencies]
+proptest = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[lib]
+name = "globe"
+path = "src/lib.rs"
+
+[[bin]]
+name = "globe"
+path = "src/main.rs"
