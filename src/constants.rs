@@ -25,3 +25,12 @@ pub const HOME_DEFAULT_LAT_NORTH: f64 = 45.0;
 
 pub const MIN_COLS: u16 = 20;
 pub const MIN_ROWS: u16 = 10;
+
+/// Cell-Höhe in Cell-Breiten. Standard ist 2.0 (jede Terminal-Zelle ist genau
+/// doppelt so hoch wie breit). Bei realen Fonts (SF Mono, Menlo) liegt der
+/// Wert oft bei 2.05–2.15 — was im ASCII-Globus zu einer leichten vertikalen
+/// Streckung führt. Live justierbar mit `(` und `)`.
+pub const CELL_ASPECT_DEFAULT: f64 = 2.0;
+pub const CELL_ASPECT_MIN: f64 = 1.4;
+pub const CELL_ASPECT_MAX: f64 = 3.0;
+pub const CELL_ASPECT_STEP: f64 = 0.05;

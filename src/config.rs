@@ -30,6 +30,11 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub snapshot: bool,
 
+    /// Cell-Aspect (Verhältnis Cell-Höhe / Cell-Breite). Default 2.0 stimmt
+    /// für SF Mono, Menlo etc. — bei vertikal gestrecktem Globus ggf. erhöhen.
+    #[arg(long, default_value_t = 2.0)]
+    pub cell_aspect: f64,
+
     /// Hilfe anzeigen.
     #[arg(long, action = ArgAction::Help)]
     pub help: Option<bool>,

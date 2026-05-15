@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use globe::app::{AppState, COARSE_LAT_STEP_DEG, COARSE_LON_STEP_DEG, RenderMode};
 use globe::config::{Cli, ModeArg, effective_mode};
-use globe::constants::{MIN_COLS, MIN_ROWS};
+use globe::constants::{CELL_ASPECT_MAX, CELL_ASPECT_MIN, MIN_COLS, MIN_ROWS};
 use globe::geo;
 use globe::tui::FrameBuffer;
 
@@ -25,7 +25,8 @@ fn main() -> Result<()> {
         ModeArg::Plain => RenderMode::Plain,
     };
 
-    let mut app = AppState::new(home, mode);
+    let cell_aspect = cli.cell_aspect.clamp(CELL_ASPECT_MIN, CELL_ASPECT_MAX);
+    let mut app = AppState::with_cell_aspect(home, mode, cell_aspect);
 
     if cli.snapshot {
         return run_snapshot(&app);
@@ -119,6 +120,8 @@ fn dispatch_key(app: &mut AppState, code: KeyCode, mods: KeyModifiers) -> bool {
         KeyCode::Char('.') | KeyCode::Char('>') | KeyCode::Char(']') => app.handle_speed_up(),
         KeyCode::Char('m') => app.handle_mode_cycle(),
         KeyCode::Char('c') => app.handle_clouds_toggle(),
+        KeyCode::Char(')') => app.handle_cell_aspect_inc(),
+        KeyCode::Char('(') => app.handle_cell_aspect_dec(),
         KeyCode::Char('?') => app.handle_help_toggle(),
         _ => {}
     }

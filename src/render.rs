@@ -67,10 +67,23 @@ pub fn ray_for_sub_pixel(
     sub_height: f64,
     cam: &Camera,
 ) -> Ray {
+    ray_at_screen(sx + 0.5, sy + 0.5, width, sub_height, cam)
+}
+
+/// Variante ohne +0.5-Center-Offset: `sx`/`sy` werden direkt als Position
+/// interpretiert. Praktisch wenn die Caller-Mathematik nicht-integer-Sample-
+/// Positionen erzeugt (z. B. Halbblock-Sub-Pixel bei nicht-1:2-Cell-Aspect).
+pub fn ray_at_screen(
+    sx: f64,
+    sy: f64,
+    width: f64,
+    sub_height: f64,
+    cam: &Camera,
+) -> Ray {
     let aspect = width / sub_height;
     let tan_fov = FOV_HALF.tan();
-    let u = (2.0 * (sx + 0.5) / width - 1.0) * aspect * tan_fov;
-    let v = (1.0 - 2.0 * (sy + 0.5) / sub_height) * tan_fov;
+    let u = (2.0 * sx / width - 1.0) * aspect * tan_fov;
+    let v = (1.0 - 2.0 * sy / sub_height) * tan_fov;
 
     let cam_dir = from_lat_lon(cam.lat_deg.to_radians(), cam.lon_deg.to_radians());
     let origin = cam_dir.mul(cam.distance);

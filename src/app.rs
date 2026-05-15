@@ -8,11 +8,12 @@ use chrono::{DateTime, Utc};
 
 use crate::camera::Camera;
 use crate::constants::{
+    CELL_ASPECT_DEFAULT, CELL_ASPECT_MAX, CELL_ASPECT_MIN, CELL_ASPECT_STEP,
     CLOUD_RADIUS, ROT_SECONDS_PER_TURN_REALTIME, ROT_SPEED_STEPS,
 };
 use crate::render::{
     self, Ray, class_color, glow_intensity, hit_to_geo, lighting, lights_visible,
-    palette_day, ray_for_sub_pixel, ray_perp_to_origin, ray_sphere, rgb_to_ansi,
+    palette_day, ray_at_screen, ray_perp_to_origin, ray_sphere, rgb_to_ansi,
     star_at, sun_marker,
 };
 use crate::sun;
@@ -96,6 +97,9 @@ pub struct AppState {
     pub freeze: bool,
     pub help_visible: bool,
     pub clouds_visible: bool,
+    /// Verhältnis cell_height / cell_width. Standard 2.0, justierbar
+    /// damit die Sphere bei real anders proportionierten Fonts rund bleibt.
+    pub cell_aspect: f64,
     pub earth_rotation_rad: f64,
     /// Bei aktivem Freeze: Sun-/Moon-Anker-Zeit.
     pub freeze_anchor: Option<DateTime<Utc>>,
@@ -107,6 +111,10 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(home: (f64, f64), mode: RenderMode) -> Self {
+        Self::with_cell_aspect(home, mode, CELL_ASPECT_DEFAULT)
+    }
+
+    pub fn with_cell_aspect(home: (f64, f64), mode: RenderMode, cell_aspect: f64) -> Self {
         Self {
             camera: Camera::new(home.0, home.1),
             home,
@@ -115,6 +123,7 @@ impl AppState {
             freeze: false,
             help_visible: false,
             clouds_visible: true,
+            cell_aspect: cell_aspect.clamp(CELL_ASPECT_MIN, CELL_ASPECT_MAX),
             earth_rotation_rad: 0.0,
             freeze_anchor: None,
             sun_delta_deg: (0.0, 0.0),
@@ -248,6 +257,14 @@ impl AppState {
         self.clouds_visible = !self.clouds_visible;
     }
 
+    pub fn handle_cell_aspect_inc(&mut self) {
+        self.cell_aspect = (self.cell_aspect + CELL_ASPECT_STEP).min(CELL_ASPECT_MAX);
+    }
+
+    pub fn handle_cell_aspect_dec(&mut self) {
+        self.cell_aspect = (self.cell_aspect - CELL_ASPECT_STEP).max(CELL_ASPECT_MIN);
+    }
+
     // ----- Rendering ------------------------------------------------------
 
     pub fn render(&self, fb: &mut FrameBuffer, now: DateTime<Utc>) {
@@ -284,11 +301,8 @@ impl AppState {
             }
         }
 
-        // Sonne / Mond Marker
-        let sub_h = match self.mode {
-            RenderMode::Blocks => render_rows as f64 * 2.0,
-            _ => render_rows as f64 * 2.0,
-        };
+        // Sonne / Mond Marker — Sub-Höhe konsistent mit Render-Funktionen
+        let sub_h = render_rows as f64 * self.cell_aspect;
         if let Some((sx, sy)) = sun_marker(base_now, &self.camera, cols as f64, sub_h) {
             self.place_sun(fb, sx, sy, render_rows);
         }
@@ -313,17 +327,37 @@ impl AppState {
         render_rows: usize,
         sun_dir: V3,
     ) {
-        let sub_h = (render_rows * 2) as f64;
+        // Welt-Y-Höhe einer Zelle = `cell_aspect` wide-units. Zwei Halbblock-
+        // Sub-Pixel pro Zelle, jeweils gesampelt in deren Mitte.
+        let sub_h = render_rows as f64 * self.cell_aspect;
+        let half = self.cell_aspect * 0.5;
+        let quarter = self.cell_aspect * 0.25;
         let w = cols as f64;
         for y in 0..render_rows {
+            let y0 = y as f64 * self.cell_aspect + quarter;
+            let y1 = y0 + half;
             for x in 0..cols {
-                let ray_up = ray_for_sub_pixel(x as f64, (y * 2) as f64, w, sub_h, &self.camera);
-                let ray_dn = ray_for_sub_pixel(x as f64, (y * 2 + 1) as f64, w, sub_h, &self.camera);
-                let pix_x_up = x as u32;
-                let pix_y_up = (y * 2) as u32;
-                let pix_y_dn = (y * 2 + 1) as u32;
-                let fg = shade_color(&ray_up, sun_dir, self.earth_rotation_rad, pix_x_up, pix_y_up, self.camera.distance, self.clouds_visible);
-                let bg = shade_color(&ray_dn, sun_dir, self.earth_rotation_rad, pix_x_up, pix_y_dn, self.camera.distance, self.clouds_visible);
+                let xc = x as f64 + 0.5;
+                let ray_up = ray_at_screen(xc, y0, w, sub_h, &self.camera);
+                let ray_dn = ray_at_screen(xc, y1, w, sub_h, &self.camera);
+                let fg = shade_color(
+                    &ray_up,
+                    sun_dir,
+                    self.earth_rotation_rad,
+                    x as u32,
+                    (y * 2) as u32,
+                    self.camera.distance,
+                    self.clouds_visible,
+                );
+                let bg = shade_color(
+                    &ray_dn,
+                    sun_dir,
+                    self.earth_rotation_rad,
+                    x as u32,
+                    (y * 2 + 1) as u32,
+                    self.camera.distance,
+                    self.clouds_visible,
+                );
                 fb.put(x, y, Cell::new('▀', fg, bg));
             }
         }
@@ -337,14 +371,14 @@ impl AppState {
         sun_dir: V3,
         color: bool,
     ) {
-        // Terminal-Zellen sind ≈1:2 — also virtuelle Pixel-Höhe = render_rows * 2,
-        // pro Zelle samplen wir genau in der vertikalen Mitte.
+        // Sub-Höhe = render_rows * cell_aspect; eine Zelle ist `cell_aspect`
+        // wide-units hoch, wir sampeln in ihrer Mitte.
         let w = cols as f64;
-        let sub_h = (render_rows as f64) * 2.0;
+        let sub_h = render_rows as f64 * self.cell_aspect;
         for y in 0..render_rows {
-            let y_sample = (y as f64) * 2.0 + 0.5;
+            let y_sample = (y as f64) * self.cell_aspect + self.cell_aspect * 0.5;
             for x in 0..cols {
-                let ray = ray_for_sub_pixel(x as f64, y_sample, w, sub_h, &self.camera);
+                let ray = ray_at_screen(x as f64 + 0.5, y_sample, w, sub_h, &self.camera);
                 let (ch, fg) = shade_ascii(
                     &ray,
                     sun_dir,
@@ -380,8 +414,8 @@ impl AppState {
 
     fn place_sun(&self, fb: &mut FrameBuffer, sx: f64, sy: f64, render_rows: usize) {
         let x = sx.floor() as i64;
-        // Sub-Pixel-Y in Zellzeile mappen — wir teilen immer durch 2 (sub_h = rows*2 für alle Modi).
-        let y = (sy / 2.0).floor() as i64;
+        // Sub-Pixel-Y in Zellzeile mappen — wir teilen durch cell_aspect.
+        let y = (sy / self.cell_aspect).floor() as i64;
         // Stern: Center + horizontale + vertikale Strahlen
         self.put_marker_cell(fb, x, y, render_rows, '●', 226);
         self.put_marker_cell(fb, x - 1, y, render_rows, '*', 220);
@@ -392,7 +426,7 @@ impl AppState {
 
     fn place_moon(&self, fb: &mut FrameBuffer, sx: f64, sy: f64, render_rows: usize, illum: f64) {
         let x = sx.floor() as i64;
-        let y = (sy / 2.0).floor() as i64;
+        let y = (sy / self.cell_aspect).floor() as i64;
         let ch = moon_phase_char(illum);
         self.put_marker_cell(fb, x, y, render_rows, ch, 255);
     }
@@ -422,9 +456,10 @@ impl AppState {
         let cl = if self.clouds_visible { "on" } else { "off" };
         let _ = write!(
             s,
-            " | mode: {} | clouds: {}  [?] help",
+            " | mode: {} | clouds: {} | aspect: {:.2}  [?] help",
             self.mode.label(),
-            cl
+            cl,
+            self.cell_aspect
         );
         s
     }
@@ -461,6 +496,7 @@ impl AppState {
             "  , .         Rotations-Speed −/+",
             "  m           Modus blocks/ascii/plain",
             "  c           Wolken-Layer ein/aus",
+            "  ( )         Cell-Aspect anpassen (Globus runder)",
             "  r           Defaults zurück (Position bleibt)",
             "  ?           Hilfe ein/aus",
             "  q / Esc     Beenden",
