@@ -102,13 +102,26 @@ def build_classes(src: Path, dst: Path) -> None:
           f"({100*comp_size/raw_size:.1f}%)")
 
 
-def build_grayscale(src: Path, dst: Path, threshold: int = 0) -> None:
-    img = Image.open(src).convert("L")
-    w, h = img.size
-    raw = list(img.getdata())
+def build_grayscale(
+    src: Path,
+    dst: Path,
+    threshold: int = 0,
+    channel: str = "L",
+) -> None:
+    """Konvertiert ein Bild zu 8-bit-Grayscale.
+
+    `channel`: 'L' = luminance, 'A' = alpha-Kanal (für Layer mit transparentem
+    Hintergrund wie z. B. Wolken).
+    """
+    img = Image.open(src)
+    if channel == "A":
+        img = img.convert("RGBA")
+        _r, _g, _b, plane = img.split()
+    else:
+        plane = img.convert("L")
+    w, h = plane.size
+    raw = list(plane.getdata())
     if threshold > 0:
-        # Pixel unter Threshold → 0. Pixel ≥ Threshold werden so reskaliert,
-        # dass aus [threshold, 255] der volle Bereich [0, 255] wird.
         scale = 255.0 / (255 - threshold) if threshold < 255 else 0
         raw = [
             0 if v < threshold else min(255, int((v - threshold) * scale))
@@ -128,8 +141,12 @@ def main() -> int:
         ("earth_atmos.jpg",  "earth_classes.bin.z", build_classes,   {}),
         # Lichter haben in der Three.js-Texture viel diffusen Glow — Threshold
         # filtert das aus, sodass nur echte Stadtlichter übrigbleiben.
-        ("earth_lights.png", "earth_lights.bin.z",  build_grayscale, {"threshold": 60}),
-        ("earth_clouds.png", "earth_clouds.bin.z",  build_grayscale, {}),
+        ("earth_lights.png", "earth_lights.bin.z",  build_grayscale,
+            {"threshold": 60}),
+        # Wolken liegen als RGBA vor — der Alpha-Kanal beschreibt die Bedeckung,
+        # nicht die Luminanz. Threshold schneidet Hintergrund-Glow weg.
+        ("earth_clouds.png", "earth_clouds.bin.z",  build_grayscale,
+            {"channel": "A", "threshold": 30}),
     ]
     print(f"Konvertiere in {ROOT}/ …")
     for src_name, dst_name, fn, kwargs in sources:
