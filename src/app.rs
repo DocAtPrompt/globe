@@ -576,11 +576,18 @@ impl AppState {
 
 // ----- Shading helpers (free functions) ------------------------------------
 
-/// Lat-Schwelle für die Äquator-Linie. 0.006 entspricht ≈ 0.34°
+/// Lat-Schwelle für die Äquator-Linie. 0.012 entspricht ≈ 0.69°
 /// (auf der Sphere ist y = sin(lat), bei kleinem Lat näherungsweise identisch).
-const EQUATOR_HALF_WIDTH: f64 = 0.006;
+/// Untere Grenze ergibt sich aus der Sub-Pixel-Pitch: bei Camera lat=0
+/// liegen Sample-Centers oberhalb/unterhalb der Linie um ≈ 0.01 — schmaler
+/// als das verliert man die Linie zwischen den Pixeln.
+const EQUATOR_HALF_WIDTH: f64 = 0.012;
 /// Lon-Schwelle für den Greenwich-Meridian in Radian.
-const MERIDIAN_HALF_WIDTH: f64 = 0.006;
+const MERIDIAN_HALF_WIDTH: f64 = 0.012;
+/// Maximale Beimischung der Linien-Farbe an der dichtesten Stelle.
+/// Niedriger Wert + softer Fade ergibt eine optisch dünne Linie, die aber
+/// immer auf min. einen Pixel trifft.
+const LINE_PEAK_ALPHA: f64 = 0.55;
 
 fn shade_color(
     ray: &Ray,
@@ -631,20 +638,22 @@ fn shade_color(
                 return rgb_to_ansi(245, 200, 90);
             }
         }
-        // Geo-Linien-Overlay mit weichen Rändern (verhindert Aliasing bei dünnen Linien)
+        // Geo-Linien-Overlay mit weichen Rändern. Threshold breit genug, dass
+        // mindestens ein Sub-Pixel pro Längen-/Breitenrad getroffen wird;
+        // niedrige Peak-Alpha macht die Linie trotzdem optisch dünn.
         let mut out = final_rgb;
         if equator_visible {
             let d = hit.point.1.abs();
             if d < EQUATOR_HALF_WIDTH {
                 let intensity = 1.0 - d / EQUATOR_HALF_WIDTH;
-                out = mix_rgb_u8(out, (255, 220, 60), 0.8 * intensity);
+                out = mix_rgb_u8(out, (255, 220, 60), LINE_PEAK_ALPHA * intensity);
             }
         }
         if meridian_visible {
             let d = lon.abs();
             if d < MERIDIAN_HALF_WIDTH {
                 let intensity = 1.0 - d / MERIDIAN_HALF_WIDTH;
-                out = mix_rgb_u8(out, (110, 200, 255), 0.8 * intensity);
+                out = mix_rgb_u8(out, (110, 200, 255), LINE_PEAK_ALPHA * intensity);
             }
         }
         rgb_to_ansi(out.0, out.1, out.2)
