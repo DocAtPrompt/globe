@@ -1,0 +1,42 @@
+globe — third-party data and asset attributions
+==================================================
+
+The Rust source code in this repository is © 2026 DocAtPrompt and
+licensed under the MIT License (see LICENSE).
+
+The pre-built map assets in `assets/*.bin.z` were derived from the
+following sources, all of which are in the public domain. No license
+restrictions apply to redistribution, but attribution is given here
+out of good practice.
+
+Earth day map (used to derive `earth_classes.bin.z`):
+    NASA Visible Earth — Blue Marble: Land Surface, Ocean Color, Sea Ice
+    and Atmosphere
+    https://visibleearth.nasa.gov/collection/1484/blue-marble
+    Public Domain (NASA imagery)
+
+Earth specular / land-water mask (used to derive `earth_classes.bin.z`):
+    Derived from a NASA Blue Marble bathymetry / specular reflection
+    composite, mirrored by the Three.js project as
+    https://threejs.org/examples/textures/planets/earth_specular_2048.jpg
+    Public Domain (NASA imagery)
+
+City lights (used to derive `earth_lights.bin.z`):
+    NASA Earth Observatory — Black Marble: Earth at Night 2016
+    https://earthobservatory.nasa.gov/features/NightLights
+    Public Domain (NASA imagery)
+
+Cloud cover (used to derive `earth_clouds.bin.z`):
+    NASA MODIS / Visible Earth cloud fraction composite
+    https://visibleearth.nasa.gov/collection/1484/blue-marble
+    Public Domain (NASA imagery)
+
+All four source images were retrieved through the Three.js texture
+mirror at https://threejs.org/examples/textures/planets/ and converted
+to the compact binary format used at compile time by `tools/build_assets.py`
+(also under MIT, part of this repository).
+
+Astronomical formulas:
+    Subsolar point — simplified NOAA Solar Position Algorithm
+    Moon orbit and phase — simplified Meeus Astronomical Algorithms,
+    chapter on lunar position

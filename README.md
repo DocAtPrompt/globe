@@ -125,3 +125,13 @@ Lädt fehlende Source-Bilder per HTTPS, klassifiziert die Day-Map über die Spec
 - Mondphasen werden als gefüllter Punkt mit Helligkeit dargestellt, ohne Phasenrichtung (Sichel links vs. rechts)
 - Klassifikations-Heuristik (RGB → Klasse) ist robust, aber JPG-Komprimierungsartefakte produzieren gelegentlich Misklassifikationen am Pixel-Rand
 - Mond-Distance ist artistisch auf 6 Erdradien komprimiert; in echter Geometrie wäre er erst bei extremem Zoom-Out im FOV
+
+## Lizenz und Quellen
+
+Der Rust-Code steht unter der **MIT-Lizenz** (siehe [`LICENSE`](LICENSE)).
+
+Die eingebetteten Map-Assets stammen aus NASA-Quellen (Blue Marble, Black Marble, MODIS Cloud Cover) und sind **Public Domain**. Genaue Quellen-URLs und Attributionen finden sich in [`NOTICE`](NOTICE).
+
+## CI
+
+`cargo build --release`, `cargo test --lib`, `cargo clippy -- -D warnings` werden bei jedem Push und PR auf Linux und macOS automatisch ausgeführt — siehe [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
