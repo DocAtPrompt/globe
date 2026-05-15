@@ -97,6 +97,7 @@ pub struct AppState {
     pub freeze: bool,
     pub help_visible: bool,
     pub clouds_visible: bool,
+    pub equator_visible: bool,
     /// Verhältnis cell_height / cell_width. Standard 2.0, justierbar
     /// damit die Sphere bei real anders proportionierten Fonts rund bleibt.
     pub cell_aspect: f64,
@@ -123,6 +124,7 @@ impl AppState {
             freeze: false,
             help_visible: false,
             clouds_visible: true,
+            equator_visible: false,
             cell_aspect: cell_aspect.clamp(CELL_ASPECT_MIN, CELL_ASPECT_MAX),
             earth_rotation_rad: 0.0,
             freeze_anchor: None,
@@ -257,6 +259,10 @@ impl AppState {
         self.clouds_visible = !self.clouds_visible;
     }
 
+    pub fn handle_equator_toggle(&mut self) {
+        self.equator_visible = !self.equator_visible;
+    }
+
     pub fn handle_cell_aspect_inc(&mut self) {
         self.cell_aspect = (self.cell_aspect + CELL_ASPECT_STEP).min(CELL_ASPECT_MAX);
     }
@@ -348,6 +354,7 @@ impl AppState {
                     (y * 2) as u32,
                     self.camera.distance,
                     self.clouds_visible,
+                    self.equator_visible,
                 );
                 let bg = shade_color(
                     &ray_dn,
@@ -357,6 +364,7 @@ impl AppState {
                     (y * 2 + 1) as u32,
                     self.camera.distance,
                     self.clouds_visible,
+                    self.equator_visible,
                 );
                 fb.put(x, y, Cell::new('▀', fg, bg));
             }
@@ -387,6 +395,7 @@ impl AppState {
                     y as u32,
                     self.camera.distance,
                     color,
+                    self.equator_visible,
                 );
                 fb.put(x, y, Cell::new(ch, if color { fg } else { 15 }, 16));
             }
@@ -509,6 +518,7 @@ impl AppState {
             "  , .         Rotations-Speed −/+",
             "  m           Modus blocks/ascii/plain",
             "  c           Wolken-Layer ein/aus",
+            "  e           Äquator-Linie ein/aus",
             "  ( )         Cell-Aspect anpassen (Globus runder)",
             "  r           Defaults zurück (Position bleibt)",
             "  ?           Hilfe ein/aus",
@@ -556,6 +566,10 @@ impl AppState {
 
 // ----- Shading helpers (free functions) ------------------------------------
 
+/// Lat-Schwelle für die Äquator-Linie. 0.012 entspricht ≈ 0.69°
+/// (auf der Sphere ist y = sin(lat), bei kleinem Lat näherungsweise identisch).
+const EQUATOR_HALF_WIDTH: f64 = 0.012;
+
 fn shade_color(
     ray: &Ray,
     sun_dir: V3,
@@ -564,6 +578,7 @@ fn shade_color(
     pix_y: u32,
     cam_distance: f64,
     clouds_visible: bool,
+    equator_visible: bool,
 ) -> u8 {
     let earth = ray_sphere(ray, 1.0);
     if let Some(hit) = earth {
@@ -603,7 +618,12 @@ fn shade_color(
                 return rgb_to_ansi(245, 200, 90);
             }
         }
-        rgb_to_ansi(final_rgb.0, final_rgb.1, final_rgb.2)
+        // Äquator-Overlay: dünner gelber Streifen entlang lat=0
+        let mut out = final_rgb;
+        if equator_visible && hit.point.1.abs() < EQUATOR_HALF_WIDTH {
+            out = mix_rgb_u8(out, (255, 220, 60), 0.7);
+        }
+        rgb_to_ansi(out.0, out.1, out.2)
     } else {
         let perp = ray_perp_to_origin(ray);
         let g = glow_intensity(perp);
@@ -648,6 +668,7 @@ fn shade_ascii(
     pix_y: u32,
     cam_distance: f64,
     color: bool,
+    equator_visible: bool,
 ) -> (char, u8) {
     let earth = ray_sphere(ray, 1.0);
     if let Some(hit) = earth {
@@ -670,15 +691,21 @@ fn shade_ascii(
         let lambert = raw.max(0.0).powf(ASCII_GAMMA);
         let visual = (lambert * class_albedo(class)).clamp(0.0, 1.0);
         let idx = ((visual * (RAMP.len() as f64 - 0.01)) as usize).min(RAMP.len() - 1);
-        let ch = RAMP[idx];
+        let mut ch = RAMP[idx];
+        let on_equator = equator_visible && hit.point.1.abs() < EQUATOR_HALF_WIDTH;
+        if on_equator {
+            ch = '=';
+        }
         let fg = if color {
-            let day = palette_day(class);
-            // Farbe nutzt den reinen Lambert (ohne Albedo), damit Tag/Nacht-Verlauf
-            // erhalten bleibt — die Klassen-Differenzierung kommt über die Klassenfarbe.
-            let r = (day.0 as f64 * (0.3 + 0.7 * lambert)) as u8;
-            let g = (day.1 as f64 * (0.3 + 0.7 * lambert)) as u8;
-            let b = (day.2 as f64 * (0.3 + 0.7 * lambert)) as u8;
-            rgb_to_ansi(r, g, b)
+            if on_equator {
+                rgb_to_ansi(255, 220, 60)
+            } else {
+                let day = palette_day(class);
+                let r = (day.0 as f64 * (0.3 + 0.7 * lambert)) as u8;
+                let g = (day.1 as f64 * (0.3 + 0.7 * lambert)) as u8;
+                let b = (day.2 as f64 * (0.3 + 0.7 * lambert)) as u8;
+                rgb_to_ansi(r, g, b)
+            }
         } else {
             15
         };

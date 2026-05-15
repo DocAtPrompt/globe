@@ -120,6 +120,7 @@ fn dispatch_key(app: &mut AppState, code: KeyCode, mods: KeyModifiers) -> bool {
         KeyCode::Char('.') | KeyCode::Char('>') | KeyCode::Char(']') => app.handle_speed_up(),
         KeyCode::Char('m') => app.handle_mode_cycle(),
         KeyCode::Char('c') => app.handle_clouds_toggle(),
+        KeyCode::Char('e') => app.handle_equator_toggle(),
         KeyCode::Char(')') => app.handle_cell_aspect_inc(),
         KeyCode::Char('(') => app.handle_cell_aspect_dec(),
         KeyCode::Char('?') => app.handle_help_toggle(),
