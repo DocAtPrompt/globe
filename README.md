@@ -10,7 +10,7 @@ cargo run --release
 
 ## Status
 
-V1 — voll lauffähig. Die Welt-Daten werden in dieser Version **prozedural aus Noise** generiert (keine echten Kontinente). Die `world`-Modul-API ist so geschnitten, dass sich NASA-Maps (Klassifikation, Black Marble Stadtlichter, Wolken) später drop-in einsetzen lassen, ohne den restlichen Code zu ändern.
+V1 — voll lauffähig mit **echten NASA-basierten Maps** (Blue Marble, Black Marble, MODIS Cloud Cover) bei 2048×1024 für Klassen und Lichter, 1024×512 für Wolken. Sourcen sind Public Domain und werden bei Bedarf via `tools/build_assets.py` neu beschafft (siehe unten).
 
 ## Standardansicht
 
@@ -86,9 +86,29 @@ cargo test --lib
 - **Mondbahn:** ≈1° in Lat/Lon (vereinfachte Meeus-Formel — voll-/Neumond-Termine 2026 trifft das Tool auf den Tag genau)
 - **Tageslänge:** Erdrotation 24 h pro Umdrehung, gerechnet mit Greenwich Mean Sidereal Time
 
+## Asset-Pipeline (echte NASA-Maps)
+
+Drei Binär-Dateien in `assets/` werden via `include_bytes!` direkt ins Release-Binary gebacken:
+
+| Datei                   | Auflösung   | Quelle                                                              | Größe |
+| ----------------------- | ----------- | ------------------------------------------------------------------- | ----- |
+| `earth_classes.bin.z`   | 2048×1024   | Blue Marble Day-Map (RGB → 6-Klassen-Heuristik)                     | ~107 KB |
+| `earth_lights.bin.z`    | 2048×1024   | Black Marble Stadtlichter (Threshold + 8-bit)                       | ~52 KB  |
+| `earth_clouds.bin.z`    | 1024×512    | MODIS Cloud Cover Composite (8-bit Alpha)                           | ~25 KB  |
+
+Lizenz: alle drei sind **NASA Public Domain**, gespiegelt im Three.js-Texture-Repository. Konvertiert mit `tools/build_assets.py` (Python + Pillow). Source-Bilder liegen in `assets/raw/` und werden bei Bedarf vom Script per HTTPS aus dem Mirror geladen.
+
+Neu generieren:
+```
+python3 tools/build_assets.py
+```
+
+Wenn du höher auflösende Maps willst (5400×2700 oder 8192×4096), tausche die URLs in `tools/build_assets.py` und lass das Script laufen — der Rest des Codes bleibt unverändert.
+
 ## Bekannte Begrenzungen
 
-- Welt-Daten sind prozedural — kein echtes Wien, Tokio, Manhattan
-- Wolken-Layer ko-rotiert mit ~1.2× Erdgeschwindigkeit (synthetisch)
+- Map-Auflösung 2048×1024 (~20 km/pixel) — größere Inseln (Sizilien, Sri Lanka, Madagaskar) klar erkennbar; sehr kleine (Malta, Mallorca) nur als 1–2 Pixel
+- Cloud-Layer ko-rotiert mit ~1.2× Erdgeschwindigkeit (synthetisch — die MODIS-Cloud-Map ist ein statischer Composite, kein Echtzeit-Wetter)
 - Mondphasen werden als gefüllter Punkt mit Helligkeit dargestellt, ohne Phasenrichtung (Sichel links vs. rechts)
 - Snapshot-Modus rendert immer 80×40 in Blocks-Modus
+- Klassifikations-Heuristik (RGB → Klasse) ist robust, aber JPG-Komprimierungsartefakte produzieren gelegentlich Misklassifikationen am Pixel-Rand

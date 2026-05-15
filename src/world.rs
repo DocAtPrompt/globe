@@ -1,9 +1,13 @@
 //! Erddaten-Sampling.
 //!
-//! V1 nutzt prozedurales Value-Noise — echte NASA-Maps (Klassen, Stadtlichter, Wolken)
-//! sind als Drop-in-Replacement vorgesehen und ändern die öffentliche API nicht.
+//! Drei zur Compile-Zeit eingebettete Maps (Klassen, Stadtlichter, Wolken),
+//! deflate-komprimiert. Sourcen: NASA Blue Marble + Black Marble + Cloud-Cover
+//! via Three.js-Texture-Mirror (Public Domain). Konvertierung erfolgt durch
+//! `tools/build_assets.py`.
 
-use std::f64::consts::PI;
+use std::sync::OnceLock;
+
+use miniz_oxide::inflate::decompress_to_vec_zlib;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Class {
@@ -15,101 +19,97 @@ pub enum Class {
     Ice,
 }
 
-/// Klasse an gegebenem (Lat, Lon) in **Radian**.
-pub fn sample_class(lat: f64, lon: f64) -> Class {
-    if lat.abs() > 1.22 {
-        // |lat| > ~70°
-        return Class::Ice;
-    }
-    let n = continent_noise(lat, lon);
-    match n {
-        n if n < 0.42 => Class::DeepSea,
-        n if n < 0.50 => Class::Sea,
-        n if n < 0.58 => Class::Flatland,
-        n if n < 0.70 => Class::Upland,
-        _ => Class::Mountain,
+/// Roh-Bytes der eingebetteten Maps. Format pro Datei:
+/// MAGIC(4) "GLBE" + VERSION(u8) + WIDTH(u16 LE) + HEIGHT(u16 LE) + zlib-payload.
+static CLASS_MAP_Z: &[u8] = include_bytes!("../assets/earth_classes.bin.z");
+static LIGHTS_MAP_Z: &[u8] = include_bytes!("../assets/earth_lights.bin.z");
+static CLOUDS_MAP_Z: &[u8] = include_bytes!("../assets/earth_clouds.bin.z");
+
+const MAGIC: &[u8; 4] = b"GLBE";
+const SUPPORTED_VERSION: u8 = 1;
+
+struct Map {
+    width: usize,
+    height: usize,
+    data: Vec<u8>,
+}
+
+impl Map {
+    fn sample(&self, lat: f64, lon: f64) -> u8 {
+        // lat in [-π/2, π/2] (Nordpol +), lon in [-π, π].
+        // Map: y=0 ist Nordpol, x=0 ist lon = -π.
+        let lat_norm = (std::f64::consts::FRAC_PI_2 - lat) / std::f64::consts::PI;
+        let lon_norm = (lon + std::f64::consts::PI) / (2.0 * std::f64::consts::PI);
+        let lat_norm = lat_norm.clamp(0.0, 1.0);
+        let lon_norm = lon_norm.rem_euclid(1.0);
+        let y = ((lat_norm * self.height as f64) as usize).min(self.height - 1);
+        let x = ((lon_norm * self.width as f64) as usize) % self.width;
+        self.data[y * self.width + x]
     }
 }
 
-/// Stadtlicht-Stärke 0–255 an gegebenem (Lat, Lon).
-/// Liefert 0 für Ozean / Eis und nicht-besiedelte Land-Pixel.
+fn load(asset: &[u8]) -> Map {
+    assert!(asset.len() >= 9, "globe: asset header truncated");
+    assert_eq!(&asset[..4], MAGIC, "globe: asset magic mismatch");
+    assert_eq!(asset[4], SUPPORTED_VERSION, "globe: asset version mismatch");
+    let width = u16::from_le_bytes([asset[5], asset[6]]) as usize;
+    let height = u16::from_le_bytes([asset[7], asset[8]]) as usize;
+    let data = decompress_to_vec_zlib(&asset[9..])
+        .expect("globe: asset decompression failed (corrupt embedded data)");
+    assert_eq!(
+        data.len(),
+        width * height,
+        "globe: decompressed size mismatch"
+    );
+    Map { width, height, data }
+}
+
+fn class_map() -> &'static Map {
+    static M: OnceLock<Map> = OnceLock::new();
+    M.get_or_init(|| load(CLASS_MAP_Z))
+}
+fn lights_map() -> &'static Map {
+    static M: OnceLock<Map> = OnceLock::new();
+    M.get_or_init(|| load(LIGHTS_MAP_Z))
+}
+fn clouds_map() -> &'static Map {
+    static M: OnceLock<Map> = OnceLock::new();
+    M.get_or_init(|| load(CLOUDS_MAP_Z))
+}
+
+/// Klasse an gegebenem (Lat, Lon) in **Radian**.
+pub fn sample_class(lat: f64, lon: f64) -> Class {
+    match class_map().sample(lat, lon) {
+        0 => Class::DeepSea,
+        1 => Class::Sea,
+        2 => Class::Flatland,
+        3 => Class::Upland,
+        4 => Class::Mountain,
+        5 => Class::Ice,
+        _ => Class::Sea,
+    }
+}
+
+/// Stadtlicht-Stärke 0–255. Wasser- und Eis-Pixel werden hart auf 0 gesetzt
+/// (die Black-Marble-Quelle hat dort manchmal Glow durch Atmosphären-Streuung).
 pub fn sample_lights(lat: f64, lon: f64) -> u8 {
     let cls = sample_class(lat, lon);
     if matches!(cls, Class::DeepSea | Class::Sea | Class::Ice) {
         return 0;
     }
-    // Sparse "Stadt"-Cluster über höherfrequentes Noise mit Threshold.
-    let city = fbm(lon * 18.0, lat * 18.0, 3);
-    if city > 0.55 {
-        let strength = ((city - 0.55) / 0.45).min(1.0);
-        (strength * 255.0) as u8
-    } else {
-        0
-    }
+    lights_map().sample(lat, lon)
 }
 
 /// Wolken-Alpha 0–255.
 pub fn sample_clouds(lat: f64, lon: f64) -> u8 {
-    let cn = fbm(lon * 5.0 + 1.7, lat * 5.0, 4);
-    if cn > 0.55 {
-        let t = ((cn - 0.55) / 0.25).min(1.0);
-        (t * 255.0 * 0.75) as u8
-    } else {
-        0
-    }
-}
-
-// ---- Internes Noise -------------------------------------------------------
-
-fn continent_noise(lat: f64, lon: f64) -> f64 {
-    let x = (lon + PI) * 1.4;
-    let y = (lat + PI / 2.0) * 1.4;
-    fbm(x, y, 4)
-}
-
-fn hash2(x: f64, y: f64) -> f64 {
-    let h = (x * 12.9898 + y * 78.233).sin() * 43758.5453;
-    h - h.floor()
-}
-
-fn value_noise(x: f64, y: f64) -> f64 {
-    let ix = x.floor();
-    let iy = y.floor();
-    let fx = x - ix;
-    let fy = y - iy;
-    let a = hash2(ix, iy);
-    let b = hash2(ix + 1.0, iy);
-    let c = hash2(ix, iy + 1.0);
-    let d = hash2(ix + 1.0, iy + 1.0);
-    let u = fx * fx * (3.0 - 2.0 * fx);
-    let v = fy * fy * (3.0 - 2.0 * fy);
-    a * (1.0 - u) * (1.0 - v) + b * u * (1.0 - v) + c * (1.0 - u) * v + d * u * v
-}
-
-fn fbm(x: f64, y: f64, octaves: u32) -> f64 {
-    let mut n = 0.0;
-    let mut amp = 1.0;
-    let mut freq = 1.0;
-    let mut total = 0.0;
-    for _ in 0..octaves {
-        n += value_noise(x * freq, y * freq) * amp;
-        total += amp;
-        amp *= 0.5;
-        freq *= 2.0;
-    }
-    n / total
+    clouds_map().sample(lat, lon)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn poles_are_ice() {
-        // North pole, south pole
-        assert_eq!(sample_class((85.0_f64).to_radians(), 0.0), Class::Ice);
-        assert_eq!(sample_class((-85.0_f64).to_radians(), 0.0), Class::Ice);
-    }
+    fn rad(deg: f64) -> f64 { deg.to_radians() }
 
     #[test]
     fn sample_class_is_deterministic() {
@@ -119,31 +119,70 @@ mod tests {
     }
 
     #[test]
-    fn sample_lights_zero_on_sea_or_ice() {
-        // High latitudes always ice → no lights.
-        for lon_deg in (-180..180).step_by(30) {
-            assert_eq!(sample_lights((80.0_f64).to_radians(), (lon_deg as f64).to_radians()), 0);
-            assert_eq!(sample_lights((-80.0_f64).to_radians(), (lon_deg as f64).to_radians()), 0);
-        }
+    fn antarctica_is_ice() {
+        // Mitten in Antarktika
+        assert_eq!(sample_class(rad(-85.0), rad(0.0)), Class::Ice);
+    }
+
+    #[test]
+    fn pacific_is_deep_sea() {
+        // Mitten im Pazifik
+        let c = sample_class(rad(0.0), rad(-150.0));
+        assert!(matches!(c, Class::DeepSea | Class::Sea), "got {:?}", c);
+    }
+
+    #[test]
+    fn sahara_is_land() {
+        // Sahara: ~20°N, 10°E — sollte Land sein (Flatland oder Upland)
+        let c = sample_class(rad(20.0), rad(10.0));
+        assert!(
+            matches!(c, Class::Flatland | Class::Upland),
+            "Sahara should be land, got {:?}",
+            c
+        );
     }
 
     #[test]
     fn class_distribution_covers_multiple_classes() {
         use std::collections::HashSet;
         let mut seen: HashSet<Class> = HashSet::new();
-        // Equatorial belt
         for lat_deg in -60..=60 {
-            for lon_deg in -180..180 {
-                seen.insert(sample_class(
-                    (lat_deg as f64).to_radians(),
-                    (lon_deg as f64).to_radians(),
-                ));
+            for lon_deg in (-180..180).step_by(2) {
+                seen.insert(sample_class(rad(lat_deg as f64), rad(lon_deg as f64)));
             }
         }
-        // Mindestens DeepSea, Sea, Flatland, Upland, Mountain müssen vorkommen
-        assert!(seen.contains(&Class::DeepSea), "DeepSea fehlt");
-        assert!(seen.contains(&Class::Flatland), "Flatland fehlt");
+        assert!(seen.contains(&Class::DeepSea) || seen.contains(&Class::Sea), "Wasser fehlt: {:?}", seen);
+        assert!(seen.contains(&Class::Flatland), "Flatland fehlt: {:?}", seen);
         assert!(seen.len() >= 4, "Zu wenig Klassen: {:?}", seen);
+    }
+
+    #[test]
+    fn sample_lights_zero_on_open_ocean() {
+        // Mitten im Pazifik — keine Lichter
+        assert_eq!(sample_lights(rad(0.0), rad(-150.0)), 0);
+    }
+
+    #[test]
+    fn tokyo_region_has_lights() {
+        // Tokio: ~35.7°N, 139.7°E — sollte hell sein
+        let v = sample_lights(rad(35.7), rad(139.7));
+        assert!(v > 50, "Tokio expected bright, got {}", v);
+    }
+
+    #[test]
+    fn lights_have_distribution() {
+        let mut nonzero = 0;
+        let mut total = 0;
+        for lat_deg in -50..=50 {
+            for lon_deg in (-180..180).step_by(2) {
+                total += 1;
+                if sample_lights(rad(lat_deg as f64), rad(lon_deg as f64)) > 0 {
+                    nonzero += 1;
+                }
+            }
+        }
+        assert!(nonzero > 50, "Kaum Lichter: {}/{}", nonzero, total);
+        assert!(nonzero < total / 2, "Zu viele Lichter: {}/{}", nonzero, total);
     }
 
     #[test]
@@ -152,37 +191,10 @@ mod tests {
         let mut clear = 0;
         for lat_deg in (-80..80).step_by(5) {
             for lon_deg in (-180..180).step_by(5) {
-                let c = sample_clouds(
-                    (lat_deg as f64).to_radians(),
-                    (lon_deg as f64).to_radians(),
-                );
-                if c > 0 {
-                    covered += 1;
-                } else {
-                    clear += 1;
-                }
+                let c = sample_clouds(rad(lat_deg as f64), rad(lon_deg as f64));
+                if c > 30 { covered += 1; } else { clear += 1; }
             }
         }
-        assert!(covered > 100 && clear > 100, "covered={}, clear={}", covered, clear);
-    }
-
-    #[test]
-    fn lights_have_some_distribution() {
-        let mut nonzero = 0;
-        for lat_deg in -50..=50 {
-            for lon_deg in (-180..180).step_by(2) {
-                let l = sample_lights(
-                    (lat_deg as f64).to_radians(),
-                    (lon_deg as f64).to_radians(),
-                );
-                if l > 0 {
-                    nonzero += 1;
-                }
-            }
-        }
-        // Erwartet: einige Stadt-Cluster, aber bei weitem nicht alle Land-Pixel.
-        assert!(nonzero > 50, "Kaum Stadtlichter gefunden: {}", nonzero);
-        let total = 101 * 180;
-        assert!(nonzero < total / 4, "Zu viele Stadtlichter: {}/{}", nonzero, total);
+        assert!(covered > 50 && clear > 50, "covered={}, clear={}", covered, clear);
     }
 }

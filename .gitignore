@@ -1,2 +1,7 @@
 /target
 .DS_Store
+
+# Source-Bilder werden von tools/build_assets.py per Download neu beschafft —
+# nur die fertigen .bin.z Maps gehören ins Repo (sie sind die Source-of-Truth
+# für `include_bytes!`).
+/assets/raw/
