@@ -12,9 +12,9 @@ use crate::constants::{
     CLOUD_RADIUS, ROT_SECONDS_PER_TURN_REALTIME, ROT_SPEED_STEPS,
 };
 use crate::render::{
-    self, Ray, class_color, glow_intensity, hit_to_geo, lighting, lights_visible,
-    palette_day, ray_at_screen, ray_perp_to_origin, ray_sphere, rgb_to_ansi,
-    star_at, sun_marker,
+    self, Ray, Star, class_color, glow_intensity, hit_to_geo, lighting,
+    lights_visible, palette_day, ray_at_screen, ray_perp_to_origin, ray_sphere,
+    rgb_to_ansi, star_at, sun_marker,
 };
 use crate::sun;
 use crate::tui::{Cell, FrameBuffer};
@@ -428,15 +428,28 @@ impl AppState {
         let x = sx.floor() as i64;
         let y = (sy / self.cell_aspect).floor() as i64;
         let ch = moon_phase_char(illum);
+        // 3-Zellen breiter Marker: zentrales Phase-Symbol + dezente Mond-Schatten
+        // links/rechts. So ist der Mond deutlich auffälliger ohne ihn massiv zu machen.
+        self.put_marker_cell(fb, x - 1, y, render_rows, '·', 244);
         self.put_marker_cell(fb, x, y, render_rows, ch, 255);
+        self.put_marker_cell(fb, x + 1, y, render_rows, '·', 244);
     }
 
     fn format_status(&self) -> String {
-        let mut s = String::with_capacity(120);
+        let mut s = String::with_capacity(160);
         let _ = write!(
             s,
             "lat {:+.1}° lon {:+.1}° | zoom {:.2}",
             self.camera.lat_deg, self.camera.lon_deg, self.camera.distance
+        );
+        // Mondphase: aktuell immer, weil sie als Live-Info sinnvoll ist
+        let base_now = self.freeze_anchor.unwrap_or_else(Utc::now);
+        let illum = crate::moon::illumination(base_now);
+        let _ = write!(
+            s,
+            " | moon: {} {:.0}%",
+            moon_phase_label(illum),
+            (illum * 100.0).round()
         );
         if self.freeze {
             let _ = write!(
@@ -595,10 +608,33 @@ fn shade_color(
         let perp = ray_perp_to_origin(ray);
         let g = glow_intensity(perp);
         if g > 0.0 {
-            return rgb_to_ansi((30.0 * g) as u8, (70.0 * g) as u8, (150.0 * g) as u8);
+            // Tangentialpunkt: dort wo der Strahl der Sphere am nächsten kommt.
+            // Sein "Light"-Wert sagt uns, ob wir auf der Tag- oder Nachtseite
+            // der Erde sind — entsprechend warmer Sonnenuntergangs-Glow oder
+            // kalter Nachtseite-Saum.
+            let t_close = -ray.origin.dot(ray.dir);
+            let tangent = ray.origin.add(ray.dir.mul(t_close));
+            let light = lighting(tangent.norm(), sun_dir);
+            let (r, gn, b) = if light > 0.5 {
+                // voll auf Tagseite: hell gelb-weiß (Tageshimmel-Streuung)
+                (220.0, 200.0, 120.0)
+            } else if light > 0.15 {
+                // Sonnenauf-/-untergang: warm orange-gelb
+                (240.0, 150.0, 60.0)
+            } else if light > 0.02 {
+                // Dämmerungssaum: rötlich-violett
+                (160.0, 90.0, 110.0)
+            } else {
+                // Nachtseite: kaltes Blau (klassischer Atmosphären-Saum)
+                (30.0, 70.0, 150.0)
+            };
+            return rgb_to_ansi((r * g) as u8, (gn * g) as u8, (b * g) as u8);
         }
-        if star_at(pix_x, pix_y) {
-            return rgb_to_ansi(220, 220, 220);
+        match star_at(pix_x, pix_y) {
+            Some(Star::Bright) => return rgb_to_ansi(255, 255, 240),
+            Some(Star::Medium) => return rgb_to_ansi(180, 180, 180),
+            Some(Star::Dim) => return rgb_to_ansi(110, 110, 130),
+            None => {}
         }
         16
     }
@@ -653,8 +689,11 @@ fn shade_ascii(
         if gl > 0.5 {
             return ('.', if color { rgb_to_ansi(30, 70, 150) } else { 15 });
         }
-        if star_at(pix_x, pix_y) {
-            return ('*', if color { 250 } else { 15 });
+        match star_at(pix_x, pix_y) {
+            Some(Star::Bright) => return ('*', if color { rgb_to_ansi(255, 255, 240) } else { 15 }),
+            Some(Star::Medium) => return ('.', if color { rgb_to_ansi(180, 180, 180) } else { 15 }),
+            Some(Star::Dim) => return ('·', if color { rgb_to_ansi(110, 110, 130) } else { 15 }),
+            None => {}
         }
         (' ', 16)
     }
@@ -671,15 +710,33 @@ fn moon_phase_char(illum: f64) -> char {
     // 0 = Neumond, 1 = Vollmond. Ohne Phasenrichtung — wir nehmen vereinfacht
     // einen Block, dessen Helligkeit der Phase entspricht.
     if illum < 0.05 {
-        '·'
+        '○'
     } else if illum < 0.25 {
         '◗'
-    } else if illum < 0.5 {
+    } else if illum < 0.45 {
         '◐'
-    } else if illum < 0.85 {
+    } else if illum < 0.55 {
         '◑'
+    } else if illum < 0.85 {
+        '◔'
     } else {
         '●'
+    }
+}
+
+fn moon_phase_label(illum: f64) -> &'static str {
+    if illum < 0.05 {
+        "Neumond"
+    } else if illum < 0.25 {
+        "Sichel"
+    } else if illum < 0.45 {
+        "Halbmond"
+    } else if illum < 0.55 {
+        "Halbmond"
+    } else if illum < 0.85 {
+        "Gibbous"
+    } else {
+        "Vollmond"
     }
 }
 

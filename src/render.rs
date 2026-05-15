@@ -208,15 +208,36 @@ pub fn glow_intensity(perp: f64) -> f64 {
     t * t
 }
 
-pub fn star_at(x: u32, y: u32) -> bool {
-    // Hash auf [0, 1), Schwellwert STAR_DENSITY.
-    let h = hash_u32(x, y);
-    h < STAR_DENSITY
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Star {
+    Bright,
+    Medium,
+    Dim,
 }
 
+pub fn star_at(x: u32, y: u32) -> Option<Star> {
+    let h = hash_u32(x, y);
+    if h < STAR_DENSITY * 0.4 {
+        Some(Star::Bright)
+    } else if h < STAR_DENSITY * 1.4 {
+        Some(Star::Medium)
+    } else if h < STAR_DENSITY * 3.5 {
+        Some(Star::Dim)
+    } else {
+        None
+    }
+}
+
+/// Hash mit zwei Misch-Schritten — der alte XOR-Ansatz erzeugte sichtbare
+/// Diagonalen, weil x und y in benachbarten Zellen quasi-linear korrelieren.
 fn hash_u32(x: u32, y: u32) -> f64 {
-    let v = (x.wrapping_mul(73_856_093)) ^ (y.wrapping_mul(19_349_663));
-    (v as f64 / u32::MAX as f64).abs().fract()
+    let mut v = x.wrapping_mul(2_654_435_761).wrapping_add(y.wrapping_mul(1_597_334_677));
+    v ^= v >> 16;
+    v = v.wrapping_mul(0x85eb_ca6b);
+    v ^= v >> 13;
+    v = v.wrapping_mul(0xc2b2_ae35);
+    v ^= v >> 16;
+    (v as f64) / (u32::MAX as f64)
 }
 
 // ----- Shade-Funktion (top-level): Sub-Pixel → ANSI-Color -------------------
@@ -281,7 +302,7 @@ pub fn shade_sub_pixel(input: &ShadeInput) -> u8 {
             let b = (150.0 * glow) as u8;
             return rgb_to_ansi(r, g, b);
         }
-        if star_at(input.pixel_x, input.pixel_y) {
+        if star_at(input.pixel_x, input.pixel_y).is_some() {
             return rgb_to_ansi(220, 220, 220);
         }
         16 // schwarz (ANSI)
