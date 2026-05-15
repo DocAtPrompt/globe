@@ -3,8 +3,15 @@ pub struct V3(pub f64, pub f64, pub f64);
 
 impl V3 {
     pub fn new(x: f64, y: f64, z: f64) -> Self { V3(x, y, z) }
+    // Diese Methoden teilen ihre Namen mit `std::ops::{Add, Sub, Mul}` —
+    // clippy flaggt das, aber die Methoden-Form ist hier bewusst leichtgewichtig
+    // gewählt (Inline-Math im Render-Pfad, kein `impl Add for V3` mit Borrow-
+    // Implikationen).
+    #[allow(clippy::should_implement_trait)]
     pub fn add(self, b: V3) -> V3 { V3(self.0 + b.0, self.1 + b.1, self.2 + b.2) }
+    #[allow(clippy::should_implement_trait)]
     pub fn sub(self, b: V3) -> V3 { V3(self.0 - b.0, self.1 - b.1, self.2 - b.2) }
+    #[allow(clippy::should_implement_trait)]
     pub fn mul(self, s: f64) -> V3 { V3(self.0 * s, self.1 * s, self.2 * s) }
     pub fn dot(self, b: V3) -> f64 { self.0 * b.0 + self.1 * b.1 + self.2 * b.2 }
     pub fn len(self) -> f64 { self.dot(self).sqrt() }

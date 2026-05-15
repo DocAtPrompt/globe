@@ -12,13 +12,13 @@ use crate::constants::{
     CLOUD_RADIUS, ROT_SECONDS_PER_TURN_REALTIME, ROT_SPEED_STEPS,
 };
 use crate::render::{
-    self, Ray, Star, class_color, glow_intensity, hit_to_geo, lighting,
-    lights_visible, palette_day, ray_at_screen, ray_perp_to_origin, ray_sphere,
-    rgb_to_ansi, star_at, sun_marker,
+    self, CITY_LIGHT_RGB, Ray, Star, class_color, glow_intensity, hit_to_geo,
+    lighting, lights_visible, palette_day, ray_at_screen, ray_perp_to_origin,
+    ray_sphere, rgb_to_ansi, star_at, sun_marker,
 };
 use crate::sun;
 use crate::tui::{Cell, FrameBuffer};
-use crate::vec3::{V3, from_lat_lon};
+use crate::vec3::{V3, from_lat_lon, rotate_y};
 use crate::world;
 
 pub const FINE_FACTOR: f64 = 0.1;
@@ -155,7 +155,12 @@ impl AppState {
         let (lat_deg, lon_deg) = sun::subsolar_point(base);
         let lat = (lat_deg + self.sun_delta_deg.0).clamp(-90.0, 90.0);
         let lon = lon_deg + self.sun_delta_deg.1;
-        from_lat_lon(lat.to_radians(), lon.to_radians())
+        // subsolar_point liefert den Subsolar im *Erd-fixed* Frame (enthält GMST).
+        // Für Lighting brauchen wir den Vektor im *Welt-Frame* — daher um die
+        // bisher akkumulierte Erddrehung zurückrotieren. Ohne das wandert die
+        // Tag/Nacht-Grenze doppelt so schnell (Earth dreht UND sub_lon kriecht).
+        let dir_earth = from_lat_lon(lat.to_radians(), lon.to_radians());
+        rotate_y(dir_earth, self.earth_rotation_rad)
     }
 
     pub fn effective_now(&self, now: DateTime<Utc>) -> DateTime<Utc> {
@@ -223,6 +228,10 @@ impl AppState {
         self.freeze_anchor = None;
         self.pre_freeze_rotation = None;
         self.mode = RenderMode::Blocks;
+        self.clouds_visible = true;
+        self.equator_visible = false;
+        self.meridian_visible = false;
+        self.help_visible = false;
     }
 
     pub fn handle_rotation_toggle(&mut self) {
@@ -315,10 +324,22 @@ impl AppState {
 
         // Sonne / Mond Marker — Sub-Höhe konsistent mit Render-Funktionen
         let sub_h = render_rows as f64 * self.cell_aspect;
-        if let Some((sx, sy)) = sun_marker(base_now, &self.camera, cols as f64, sub_h) {
+        if let Some((sx, sy)) = sun_marker(
+            base_now,
+            self.earth_rotation_rad,
+            &self.camera,
+            cols as f64,
+            sub_h,
+        ) {
             self.place_sun(fb, sx, sy, render_rows);
         }
-        if let Some(((sx, sy), illum)) = render::moon_marker(base_now, &self.camera, cols as f64, sub_h) {
+        if let Some(((sx, sy), illum)) = render::moon_marker(
+            base_now,
+            self.earth_rotation_rad,
+            &self.camera,
+            cols as f64,
+            sub_h,
+        ) {
             self.place_moon(fb, sx, sy, render_rows, illum);
         }
 
@@ -589,6 +610,7 @@ const MERIDIAN_HALF_WIDTH: f64 = 0.012;
 /// immer auf min. einen Pixel trifft.
 const LINE_PEAK_ALPHA: f64 = 0.55;
 
+#[allow(clippy::too_many_arguments)]
 fn shade_color(
     ray: &Ray,
     sun_dir: V3,
@@ -635,7 +657,7 @@ fn shade_color(
         if light < 0.05 {
             let strength = world::sample_lights(lat, lon);
             if lights_visible(strength, cam_distance) {
-                return rgb_to_ansi(245, 200, 90);
+                return rgb_to_ansi(CITY_LIGHT_RGB.0, CITY_LIGHT_RGB.1, CITY_LIGHT_RGB.2);
             }
         }
         // Geo-Linien-Overlay mit weichen Rändern. Threshold breit genug, dass
@@ -693,6 +715,7 @@ fn shade_color(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn shade_ascii(
     ray: &Ray,
     sun_dir: V3,
@@ -715,7 +738,12 @@ fn shade_ascii(
         if night_side {
             let strength = world::sample_lights(lat, lon);
             if lights_visible(strength, cam_distance) {
-                return ('·', if color { rgb_to_ansi(245, 200, 90) } else { 15 });
+                let fg = if color {
+                    rgb_to_ansi(CITY_LIGHT_RGB.0, CITY_LIGHT_RGB.1, CITY_LIGHT_RGB.2)
+                } else {
+                    15
+                };
+                return ('·', fg);
             }
             return (' ', 16);
         }
@@ -798,8 +826,6 @@ fn moon_phase_label(illum: f64) -> &'static str {
         "Neumond"
     } else if illum < 0.25 {
         "Sichel"
-    } else if illum < 0.45 {
-        "Halbmond"
     } else if illum < 0.55 {
         "Halbmond"
     } else if illum < 0.85 {

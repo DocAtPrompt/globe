@@ -5,6 +5,8 @@ use crate::constants::{CLOUD_RADIUS, FOV_HALF, GLOW_OUTER, STAR_DENSITY, SUN_MOO
 use crate::moon;
 use crate::sun;
 use crate::vec3::{V3, from_lat_lon, rotate_y, to_lat_lon};
+
+// `rotate_y` wird auch für sun/moon-Marker (Erd-fixed → Welt-Frame) gebraucht.
 use crate::world::{self, Class};
 
 use chrono::{DateTime, Utc};
@@ -183,7 +185,7 @@ pub fn class_color(c: Class, light: f64) -> (u8, u8, u8) {
 
 // ----- Stadtlichter ---------------------------------------------------------
 
-const CITY_LIGHT_RGB: (u8, u8, u8) = (245, 200, 90);
+pub const CITY_LIGHT_RGB: (u8, u8, u8) = (245, 200, 90);
 
 /// Schwellwert für sichtbare Stadtlicht-Stärke, abhängig vom Zoom.
 /// Bei `distance = ZOOM_DEFAULT` nur hellste Lichter, beim Reinzoomen mehr.
@@ -367,8 +369,12 @@ pub fn occluded_by_earth(target_world: V3, cam: &Camera) -> bool {
 }
 
 /// Sonnen-Pixel-Position für aktuelle Zeit (oder None, wenn nicht sichtbar).
+/// `earth_rotation_rad` rotiert den Erd-fixed-Sonnenvektor in den Welt-Frame,
+/// damit die Sonne bei aktiver Erdrotation an ihrer wahren astronomischen Position
+/// bleibt (und nicht mit der Erde mitwandert).
 pub fn sun_marker(
     now: DateTime<Utc>,
+    earth_rotation_rad: f64,
     cam: &Camera,
     width: f64,
     sub_height: f64,
@@ -376,9 +382,9 @@ pub fn sun_marker(
     if !sun_moon_visible(cam.distance) {
         return None;
     }
-    let sd = sun::sun_direction(now);
-    // Sonne effektiv im Unendlichen → Punkt = sun_dir * 10000
-    let target = sd.mul(10_000.0);
+    let sd_earth = sun::sun_direction(now);
+    let sd_world = rotate_y(sd_earth, earth_rotation_rad);
+    let target = sd_world.mul(10_000.0);
     if occluded_by_earth(target, cam) {
         return None;
     }
@@ -388,6 +394,7 @@ pub fn sun_marker(
 /// Mond-Pixel-Position + Illumination (oder None, wenn nicht sichtbar).
 pub fn moon_marker(
     now: DateTime<Utc>,
+    earth_rotation_rad: f64,
     cam: &Camera,
     width: f64,
     sub_height: f64,
@@ -395,12 +402,13 @@ pub fn moon_marker(
     if !sun_moon_visible(cam.distance) {
         return None;
     }
-    let p = moon::position_world(now);
-    if occluded_by_earth(p, cam) {
+    let p_earth = moon::position_world(now);
+    let p_world = rotate_y(p_earth, earth_rotation_rad);
+    if occluded_by_earth(p_world, cam) {
         return None;
     }
     let illum = moon::illumination(now);
-    project(p, cam, width, sub_height).map(|xy| (xy, illum))
+    project(p_world, cam, width, sub_height).map(|xy| (xy, illum))
 }
 
 // ----- Tests ----------------------------------------------------------------

@@ -7,6 +7,13 @@ use crate::vec3::{V3, from_lat_lon};
 
 const EARTH_RADIUS_KM: f64 = 6371.0;
 
+/// Anzeige-Distanz des Monds, in Welt-Einheiten (Erdradien). Echte ≈ 60.
+/// Bei Original-Distanz steht der Mond praktisch immer außerhalb des FOV
+/// (außer bei extremen Zoom-Out). Auf 6 komprimiert bleibt er bei normalem
+/// Zoom als Begleiter neben der Erde sichtbar. Mondphase und Bahn-Geometrie
+/// bleiben physikalisch korrekt; nur die Skalierung ist artistisch.
+pub const MOON_DISPLAY_DISTANCE_EARTH_RADII: f64 = 6.0;
+
 /// Subselenes Lat/Lon-Paar in Grad + Distance vom Erd-Zentrum in Erdradien.
 /// Lat ≈ ±28.6° max (5° Bahn-Inklination + 23.4° Achsen-Neigung).
 pub fn position(now: DateTime<Utc>) -> SubLunar {
@@ -60,11 +67,14 @@ pub struct SubLunar {
     pub distance_earth_radii: f64,
 }
 
-/// Welt-Position des Monds (in Erdradien, Ursprung = Erdmittelpunkt).
+/// Welt-Position des Monds in Erdradien (Ursprung = Erdmittelpunkt). Die echte
+/// Bahn ist ~60 Erdradien entfernt; wir komprimieren auf
+/// `MOON_DISPLAY_DISTANCE_EARTH_RADII`, damit der Mond im typischen Zoom-Bereich
+/// neben der Erde sichtbar ist (Richtung und Phase bleiben astronomisch korrekt).
 pub fn position_world(now: DateTime<Utc>) -> V3 {
     let s = position(now);
     let dir = from_lat_lon(s.lat_deg.to_radians(), s.lon_deg.to_radians());
-    dir.mul(s.distance_earth_radii)
+    dir.mul(MOON_DISPLAY_DISTANCE_EARTH_RADII)
 }
 
 /// Beleuchtungs-Anteil 0…1 (0 = Neumond, 1 = Vollmond).
@@ -123,12 +133,13 @@ mod tests {
     }
 
     #[test]
-    fn position_world_length_matches_distance() {
+    fn position_world_uses_compressed_distance() {
+        // `position_world` skaliert artistisch auf MOON_DISPLAY_DISTANCE_EARTH_RADII,
+        // damit der Mond bei normalem Zoom sichtbar bleibt.
         let now = dt(2026, 5, 15, 0, 0, 0);
         let p = position_world(now);
         let len = (p.0 * p.0 + p.1 * p.1 + p.2 * p.2).sqrt();
-        let s = position(now);
-        assert!((len - s.distance_earth_radii).abs() < 1e-6);
+        assert!((len - MOON_DISPLAY_DISTANCE_EARTH_RADII).abs() < 1e-6);
     }
 
     proptest::proptest! {

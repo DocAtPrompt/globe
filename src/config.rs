@@ -70,8 +70,8 @@ mod tests {
         assert_eq!(c.home, None);
         assert_eq!(c.fps, 30);
         assert_eq!(c.mode, ModeArg::Blocks);
-        assert_eq!(c.no_color, false);
-        assert_eq!(c.snapshot, false);
+        assert!(!c.no_color);
+        assert!(!c.snapshot);
     }
 
     #[test]

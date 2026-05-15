@@ -228,7 +228,7 @@ mod tests {
     fn resize_forces_full_redraw_next_flush() {
         let mut fb = FrameBuffer::new(2, 1);
         fb.put(0, 0, Cell::new('A', 100, 16));
-        let _ = fb.flush_diff(&mut Vec::new()).unwrap();
+        fb.flush_diff(&mut Vec::new()).unwrap();
 
         fb.resize(3, 1);
         fb.put(0, 0, Cell::new('A', 100, 16));

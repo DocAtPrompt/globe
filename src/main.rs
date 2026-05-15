@@ -36,7 +36,14 @@ fn main() -> Result<()> {
 }
 
 fn run_snapshot(app: &AppState) -> Result<()> {
-    let mut fb = FrameBuffer::new(80, 40);
+    // Beim Snapshot nehmen wir die echte Terminal-Größe — fällt zurück auf 80×40
+    // wenn kein Terminal angeschlossen ist (z.B. Pipe in eine Datei).
+    let (cols, rows) = terminal::size()
+        .map(|(c, r)| (c as usize, r as usize))
+        .unwrap_or((80, 40));
+    let cols = cols.max(MIN_COLS as usize);
+    let rows = rows.max(MIN_ROWS as usize);
+    let mut fb = FrameBuffer::new(cols, rows);
     let now = Utc
         .with_ymd_and_hms(2026, 3, 20, 12, 0, 0)
         .single()
@@ -71,10 +78,10 @@ fn run_interactive(app: &mut AppState, fps: u32) -> Result<()> {
         if event::poll(active_frame_dur)? {
             let ev = event::read()?;
             if let Event::Key(k) = ev {
-                if k.kind == KeyEventKind::Press {
-                    if dispatch_key(app, k.code, k.modifiers) {
-                        return Ok(());
-                    }
+                if k.kind == KeyEventKind::Press
+                    && dispatch_key(app, k.code, k.modifiers)
+                {
+                    return Ok(());
                 }
             } else if let Event::Resize(_, _) = ev {
                 fb.force_full_redraw();

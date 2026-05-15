@@ -6,7 +6,7 @@ use crate::vec3::{V3, from_lat_lon};
 
 /// Julianisches Datum für UTC-Zeitpunkt (Meeus Algorithmus).
 pub fn julian_day(now: DateTime<Utc>) -> f64 {
-    let mut y = now.year() as i32;
+    let mut y = now.year();
     let mut m = now.month() as i32;
     let d = now.day() as f64;
     let day_frac = (now.hour() as f64
@@ -172,7 +172,7 @@ mod tests {
             let when = base + chrono::Duration::days(days) + chrono::Duration::seconds(seconds as i64);
             let (lat, lon) = subsolar_point(when);
             proptest::prop_assert!(lat.abs() <= 23.5,  "lat {} out of range",  lat);
-            proptest::prop_assert!(lon >= -180.0 && lon <= 180.0, "lon {} out of range", lon);
+            proptest::prop_assert!((-180.0..=180.0).contains(&lon), "lon {} out of range", lon);
         }
     }
 }
