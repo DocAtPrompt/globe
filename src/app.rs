@@ -95,6 +95,7 @@ pub struct AppState {
     pub auto_rotation: AutoRotation,
     pub freeze: bool,
     pub help_visible: bool,
+    pub clouds_visible: bool,
     pub earth_rotation_rad: f64,
     /// Bei aktivem Freeze: Sun-/Moon-Anker-Zeit.
     pub freeze_anchor: Option<DateTime<Utc>>,
@@ -113,6 +114,7 @@ impl AppState {
             auto_rotation: AutoRotation::On { speed_idx: 0 },
             freeze: false,
             help_visible: false,
+            clouds_visible: true,
             earth_rotation_rad: 0.0,
             freeze_anchor: None,
             sun_delta_deg: (0.0, 0.0),
@@ -242,6 +244,10 @@ impl AppState {
         self.help_visible = !self.help_visible;
     }
 
+    pub fn handle_clouds_toggle(&mut self) {
+        self.clouds_visible = !self.clouds_visible;
+    }
+
     // ----- Rendering ------------------------------------------------------
 
     pub fn render(&self, fb: &mut FrameBuffer, now: DateTime<Utc>) {
@@ -316,8 +322,8 @@ impl AppState {
                 let pix_x_up = x as u32;
                 let pix_y_up = (y * 2) as u32;
                 let pix_y_dn = (y * 2 + 1) as u32;
-                let fg = shade_color(&ray_up, sun_dir, self.earth_rotation_rad, pix_x_up, pix_y_up, self.camera.distance);
-                let bg = shade_color(&ray_dn, sun_dir, self.earth_rotation_rad, pix_x_up, pix_y_dn, self.camera.distance);
+                let fg = shade_color(&ray_up, sun_dir, self.earth_rotation_rad, pix_x_up, pix_y_up, self.camera.distance, self.clouds_visible);
+                let bg = shade_color(&ray_dn, sun_dir, self.earth_rotation_rad, pix_x_up, pix_y_dn, self.camera.distance, self.clouds_visible);
                 fb.put(x, y, Cell::new('▀', fg, bg));
             }
         }
@@ -413,7 +419,13 @@ impl AppState {
             };
             let _ = write!(s, " | sun: live | rot: {}", rot_txt);
         }
-        let _ = write!(s, " | mode: {}  [?] help", self.mode.label());
+        let cl = if self.clouds_visible { "on" } else { "off" };
+        let _ = write!(
+            s,
+            " | mode: {} | clouds: {}  [?] help",
+            self.mode.label(),
+            cl
+        );
         s
     }
 
@@ -448,6 +460,7 @@ impl AppState {
             "  Space       Auto-Rotation toggle",
             "  , .         Rotations-Speed −/+",
             "  m           Modus blocks/ascii/plain",
+            "  c           Wolken-Layer ein/aus",
             "  r           Defaults zurück (Position bleibt)",
             "  ?           Hilfe ein/aus",
             "  q / Esc     Beenden",
@@ -501,6 +514,7 @@ fn shade_color(
     pix_x: u32,
     pix_y: u32,
     cam_distance: f64,
+    clouds_visible: bool,
 ) -> u8 {
     let earth = ray_sphere(ray, 1.0);
     if let Some(hit) = earth {
@@ -508,17 +522,21 @@ fn shade_color(
         let class = world::sample_class(lat, lon);
         let light = lighting(hit.point, sun_dir);
 
-        // Cloud vor Erde?
-        let cloud = ray_sphere(ray, CLOUD_RADIUS);
-        let final_rgb = if let Some(ch) = cloud {
-            if ch.t < hit.t {
-                let (clat, clon) = hit_to_geo(ch.point, earth_rot * 1.2);
-                let alpha = world::sample_clouds(clat, clon) as f64 / 255.0;
-                if alpha > 0.0 {
-                    let base = class_color(class, light);
-                    let cloud_lit = (210.0 * (0.2 + 0.8 * light)).clamp(20.0, 255.0) as u8;
-                    let cloud_rgb = (cloud_lit, cloud_lit, cloud_lit);
-                    mix_rgb_u8(base, cloud_rgb, alpha)
+        // Cloud vor Erde? Nur prüfen wenn Wolken eingeblendet sind.
+        let final_rgb = if clouds_visible {
+            let cloud = ray_sphere(ray, CLOUD_RADIUS);
+            if let Some(ch) = cloud {
+                if ch.t < hit.t {
+                    let (clat, clon) = hit_to_geo(ch.point, earth_rot * 1.2);
+                    let alpha = world::sample_clouds(clat, clon) as f64 / 255.0;
+                    if alpha > 0.0 {
+                        let base = class_color(class, light);
+                        let cloud_lit = (210.0 * (0.2 + 0.8 * light)).clamp(20.0, 255.0) as u8;
+                        let cloud_rgb = (cloud_lit, cloud_lit, cloud_lit);
+                        mix_rgb_u8(base, cloud_rgb, alpha)
+                    } else {
+                        class_color(class, light)
+                    }
                 } else {
                     class_color(class, light)
                 }
