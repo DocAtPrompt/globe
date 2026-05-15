@@ -42,8 +42,12 @@ impl FrameBuffer {
         }
     }
 
-    pub fn cols(&self) -> usize { self.cols }
-    pub fn rows(&self) -> usize { self.rows }
+    pub fn cols(&self) -> usize {
+        self.cols
+    }
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
 
     pub fn resize(&mut self, cols: usize, rows: usize) {
         if cols == self.cols && rows == self.rows {
@@ -221,7 +225,11 @@ mod tests {
         fb.flush_diff(&mut out2).unwrap();
         let s2 = String::from_utf8(out2).unwrap();
         assert!(s2.contains('C'));
-        assert!(!s2.contains('A'), "unchanged A should not be re-emitted: {:?}", s2);
+        assert!(
+            !s2.contains('A'),
+            "unchanged A should not be re-emitted: {:?}",
+            s2
+        );
     }
 
     #[test]

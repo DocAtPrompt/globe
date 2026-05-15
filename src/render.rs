@@ -4,7 +4,7 @@ use crate::camera::Camera;
 use crate::constants::{CLOUD_RADIUS, FOV_HALF, GLOW_OUTER, STAR_DENSITY, SUN_MOON_VISIBLE_DIST};
 use crate::moon;
 use crate::sun;
-use crate::vec3::{V3, from_lat_lon, rotate_y, to_lat_lon};
+use crate::vec3::{from_lat_lon, rotate_y, to_lat_lon, V3};
 
 // `rotate_y` wird auch für sun/moon-Marker (Erd-fixed → Welt-Frame) gebraucht.
 use crate::world::{self, Class};
@@ -62,26 +62,14 @@ pub fn ray_perp_to_origin(ray: &Ray) -> f64 {
 
 /// Erzeugt Strahl für ein Sub-Pixel.
 /// `sx` in [0, width), `sy` in [0, sub_height). Sample wird zentriert (+0.5).
-pub fn ray_for_sub_pixel(
-    sx: f64,
-    sy: f64,
-    width: f64,
-    sub_height: f64,
-    cam: &Camera,
-) -> Ray {
+pub fn ray_for_sub_pixel(sx: f64, sy: f64, width: f64, sub_height: f64, cam: &Camera) -> Ray {
     ray_at_screen(sx + 0.5, sy + 0.5, width, sub_height, cam)
 }
 
 /// Variante ohne +0.5-Center-Offset: `sx`/`sy` werden direkt als Position
 /// interpretiert. Praktisch wenn die Caller-Mathematik nicht-integer-Sample-
 /// Positionen erzeugt (z. B. Halbblock-Sub-Pixel bei nicht-1:2-Cell-Aspect).
-pub fn ray_at_screen(
-    sx: f64,
-    sy: f64,
-    width: f64,
-    sub_height: f64,
-    cam: &Camera,
-) -> Ray {
+pub fn ray_at_screen(sx: f64, sy: f64, width: f64, sub_height: f64, cam: &Camera) -> Ray {
     let aspect = width / sub_height;
     let tan_fov = FOV_HALF.tan();
     let u = (2.0 * sx / width - 1.0) * aspect * tan_fov;
@@ -174,7 +162,9 @@ pub fn palette_night(c: Class) -> (u8, u8, u8) {
 
 fn mix_rgb(a: (u8, u8, u8), b: (u8, u8, u8), t: f64) -> (u8, u8, u8) {
     let lerp = |x: u8, y: u8| -> u8 {
-        (x as f64 + (y as f64 - x as f64) * t).round().clamp(0.0, 255.0) as u8
+        (x as f64 + (y as f64 - x as f64) * t)
+            .round()
+            .clamp(0.0, 255.0) as u8
     };
     (lerp(a.0, b.0), lerp(a.1, b.1), lerp(a.2, b.2))
 }
@@ -233,7 +223,9 @@ pub fn star_at(x: u32, y: u32) -> Option<Star> {
 /// Hash mit zwei Misch-Schritten — der alte XOR-Ansatz erzeugte sichtbare
 /// Diagonalen, weil x und y in benachbarten Zellen quasi-linear korrelieren.
 fn hash_u32(x: u32, y: u32) -> f64 {
-    let mut v = x.wrapping_mul(2_654_435_761).wrapping_add(y.wrapping_mul(1_597_334_677));
+    let mut v = x
+        .wrapping_mul(2_654_435_761)
+        .wrapping_add(y.wrapping_mul(1_597_334_677));
     v ^= v >> 16;
     v = v.wrapping_mul(0x85eb_ca6b);
     v ^= v >> 13;

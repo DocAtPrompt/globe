@@ -2,17 +2,15 @@
 
 use chrono::{DateTime, Datelike, Timelike, Utc};
 
-use crate::vec3::{V3, from_lat_lon};
+use crate::vec3::{from_lat_lon, V3};
 
 /// Julianisches Datum für UTC-Zeitpunkt (Meeus Algorithmus).
 pub fn julian_day(now: DateTime<Utc>) -> f64 {
     let mut y = now.year();
     let mut m = now.month() as i32;
     let d = now.day() as f64;
-    let day_frac = (now.hour() as f64
-        + now.minute() as f64 / 60.0
-        + now.second() as f64 / 3600.0)
-        / 24.0;
+    let day_frac =
+        (now.hour() as f64 + now.minute() as f64 / 60.0 + now.second() as f64 / 3600.0) / 24.0;
 
     if m <= 2 {
         y -= 1;
@@ -36,8 +34,7 @@ pub fn subsolar_point(now: DateTime<Utc>) -> (f64, f64) {
 
     let l_deg = (280.460 + 0.9856474 * n).rem_euclid(360.0);
     let g_rad = ((357.528 + 0.9856003 * n).rem_euclid(360.0)).to_radians();
-    let lambda_rad =
-        (l_deg + 1.915 * g_rad.sin() + 0.020 * (2.0 * g_rad).sin()).to_radians();
+    let lambda_rad = (l_deg + 1.915 * g_rad.sin() + 0.020 * (2.0 * g_rad).sin()).to_radians();
     let epsilon_rad = (23.439 - 0.0000004 * n).to_radians();
 
     let decl_deg = (epsilon_rad.sin() * lambda_rad.sin()).asin().to_degrees();

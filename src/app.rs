@@ -8,17 +8,17 @@ use chrono::{DateTime, Utc};
 
 use crate::camera::Camera;
 use crate::constants::{
-    CELL_ASPECT_DEFAULT, CELL_ASPECT_MAX, CELL_ASPECT_MIN, CELL_ASPECT_STEP,
-    CLOUD_RADIUS, ROT_SECONDS_PER_TURN_REALTIME, ROT_SPEED_STEPS,
+    CELL_ASPECT_DEFAULT, CELL_ASPECT_MAX, CELL_ASPECT_MIN, CELL_ASPECT_STEP, CLOUD_RADIUS,
+    ROT_SECONDS_PER_TURN_REALTIME, ROT_SPEED_STEPS,
 };
 use crate::render::{
-    self, CITY_LIGHT_RGB, Ray, Star, class_color, glow_intensity, hit_to_geo,
-    lighting, lights_visible, palette_day, ray_at_screen, ray_perp_to_origin,
-    ray_sphere, rgb_to_ansi, star_at, sun_marker,
+    self, class_color, glow_intensity, hit_to_geo, lighting, lights_visible, palette_day,
+    ray_at_screen, ray_perp_to_origin, ray_sphere, rgb_to_ansi, star_at, sun_marker, Ray, Star,
+    CITY_LIGHT_RGB,
 };
 use crate::sun;
 use crate::tui::{Cell, FrameBuffer};
-use crate::vec3::{V3, from_lat_lon, rotate_y};
+use crate::vec3::{from_lat_lon, rotate_y, V3};
 use crate::world;
 
 pub const FINE_FACTOR: f64 = 0.1;
@@ -136,6 +136,20 @@ impl AppState {
     }
 
     // ----- Time -----------------------------------------------------------
+
+    /// True wenn das Tool gerade keine visuelle Bewegung pro Frame liefert.
+    /// Im Idle drosselt der Main-Loop die Frame-Rate, um CPU zu sparen — der
+    /// Subsolar-Punkt wandert in Realtime nur 0.004°/s, also reicht 1 fps.
+    pub fn is_idle(&self) -> bool {
+        if self.freeze {
+            return true;
+        }
+        match self.auto_rotation {
+            AutoRotation::Off => true,
+            AutoRotation::On { speed_idx: 0 } => true,
+            AutoRotation::On { .. } => false,
+        }
+    }
 
     pub fn step(&mut self, dt: Duration) {
         if self.freeze {
@@ -353,13 +367,7 @@ impl AppState {
         }
     }
 
-    fn render_blocks(
-        &self,
-        fb: &mut FrameBuffer,
-        cols: usize,
-        render_rows: usize,
-        sun_dir: V3,
-    ) {
+    fn render_blocks(&self, fb: &mut FrameBuffer, cols: usize, render_rows: usize, sun_dir: V3) {
         // Welt-Y-Höhe einer Zelle = `cell_aspect` wide-units. Zwei Halbblock-
         // Sub-Pixel pro Zelle, jeweils gesampelt in deren Mitte.
         let sub_h = render_rows as f64 * self.cell_aspect;
@@ -484,10 +492,21 @@ impl AppState {
         // Mondphase: aktuell immer, weil sie als Live-Info sinnvoll ist
         let base_now = self.freeze_anchor.unwrap_or_else(Utc::now);
         let illum = crate::moon::illumination(base_now);
+        // Phasen-Richtung: 6h später hat sich der Beleuchtungsanteil messbar
+        // verschoben (Mondzyklus ~29.5 Tage → ~1.4 %-Punkte pro 6h im Mittel).
+        let illum_later = crate::moon::illumination(base_now + chrono::Duration::hours(6));
+        let direction = if illum_later > illum + 0.003 {
+            " ↑"
+        } else if illum_later < illum - 0.003 {
+            " ↓"
+        } else {
+            ""
+        };
         let _ = write!(
             s,
-            " | moon: {} {:.0}%",
+            " | moon: {}{} {:.0}%",
             moon_phase_label(illum),
+            direction,
             (illum * 100.0).round()
         );
         if self.freeze {
@@ -787,9 +806,36 @@ fn shade_ascii(
             return ('.', if color { rgb_to_ansi(30, 70, 150) } else { 15 });
         }
         match star_at(pix_x, pix_y) {
-            Some(Star::Bright) => return ('*', if color { rgb_to_ansi(255, 255, 240) } else { 15 }),
-            Some(Star::Medium) => return ('.', if color { rgb_to_ansi(180, 180, 180) } else { 15 }),
-            Some(Star::Dim) => return ('·', if color { rgb_to_ansi(110, 110, 130) } else { 15 }),
+            Some(Star::Bright) => {
+                return (
+                    '*',
+                    if color {
+                        rgb_to_ansi(255, 255, 240)
+                    } else {
+                        15
+                    },
+                )
+            }
+            Some(Star::Medium) => {
+                return (
+                    '.',
+                    if color {
+                        rgb_to_ansi(180, 180, 180)
+                    } else {
+                        15
+                    },
+                )
+            }
+            Some(Star::Dim) => {
+                return (
+                    '·',
+                    if color {
+                        rgb_to_ansi(110, 110, 130)
+                    } else {
+                        15
+                    },
+                )
+            }
             None => {}
         }
         (' ', 16)
@@ -798,7 +844,9 @@ fn shade_ascii(
 
 fn mix_rgb_u8(a: (u8, u8, u8), b: (u8, u8, u8), t: f64) -> (u8, u8, u8) {
     let lerp = |x: u8, y: u8| -> u8 {
-        (x as f64 + (y as f64 - x as f64) * t).round().clamp(0.0, 255.0) as u8
+        (x as f64 + (y as f64 - x as f64) * t)
+            .round()
+            .clamp(0.0, 255.0) as u8
     };
     (lerp(a.0, b.0), lerp(a.1, b.1), lerp(a.2, b.2))
 }
@@ -842,7 +890,9 @@ mod tests {
     use chrono::TimeZone;
 
     fn now_fixed() -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 5, 15, 12, 0, 0).single().unwrap()
+        Utc.with_ymd_and_hms(2026, 5, 15, 12, 0, 0)
+            .single()
+            .unwrap()
     }
 
     #[test]
@@ -852,7 +902,10 @@ mod tests {
         assert!((app.camera.lon_deg - 16.37).abs() < 1e-9);
         assert_eq!(app.camera.distance, ZOOM_DEFAULT);
         assert_eq!(app.mode, RenderMode::Blocks);
-        assert!(matches!(app.auto_rotation, AutoRotation::On { speed_idx: 0 }));
+        assert!(matches!(
+            app.auto_rotation,
+            AutoRotation::On { speed_idx: 0 }
+        ));
         assert!(!app.freeze);
     }
 

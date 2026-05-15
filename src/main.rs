@@ -2,23 +2,28 @@ use anyhow::{Context, Result};
 use chrono::{TimeZone, Utc};
 use clap::Parser;
 use crossterm::{
-    cursor, event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    cursor,
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::io::{Write, stdout};
+use std::io::{stdout, Write};
 use std::time::{Duration, Instant};
 
-use globe::app::{AppState, COARSE_LAT_STEP_DEG, COARSE_LON_STEP_DEG, RenderMode};
-use globe::config::{Cli, ModeArg, effective_mode};
-use globe::constants::{CELL_ASPECT_MAX, CELL_ASPECT_MIN, MIN_COLS, MIN_ROWS};
+use globe::app::{AppState, RenderMode, COARSE_LAT_STEP_DEG, COARSE_LON_STEP_DEG};
+use globe::config::{effective_mode, Cli, ModeArg};
+use globe::constants::{CELL_ASPECT_MAX, CELL_ASPECT_MIN, IDLE_FPS, MIN_COLS, MIN_ROWS};
 use globe::geo;
 use globe::tui::FrameBuffer;
 
+/// Wenn die App nicht visuell animiert und seit dieser Zeit kein Input kam,
+/// drosseln wir die Frame-Rate auf `IDLE_FPS`.
+const IDLE_DEBOUNCE: Duration = Duration::from_secs(2);
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let home = geo::resolve_home(cli.home.as_deref())
-        .map_err(|e| anyhow::anyhow!("--home: {}", e))?;
+    let home =
+        geo::resolve_home(cli.home.as_deref()).map_err(|e| anyhow::anyhow!("--home: {}", e))?;
     let mode = match effective_mode(cli.mode, cli.no_color) {
         ModeArg::Blocks => RenderMode::Blocks,
         ModeArg::Ascii => RenderMode::Ascii,
@@ -71,20 +76,32 @@ fn run_interactive(app: &mut AppState, fps: u32) -> Result<()> {
     let _guard = TerminalGuard;
 
     let active_frame_dur = Duration::from_millis((1000 / fps).max(1) as u64);
+    let idle_frame_dur = Duration::from_millis((1000 / IDLE_FPS.max(1)) as u64);
     let mut fb = FrameBuffer::new(0, 0);
     let mut last_step = Instant::now();
+    let mut last_input = Instant::now();
 
     loop {
-        if event::poll(active_frame_dur)? {
+        // Frame-Rate dynamisch: Idle (Auto-Rotation off oder Realtime + kein Input)
+        // → langsam, sonst voll.
+        let frame_dur = if app.is_idle() && last_input.elapsed() > IDLE_DEBOUNCE {
+            idle_frame_dur
+        } else {
+            active_frame_dur
+        };
+
+        if event::poll(frame_dur)? {
             let ev = event::read()?;
             if let Event::Key(k) = ev {
-                if k.kind == KeyEventKind::Press
-                    && dispatch_key(app, k.code, k.modifiers)
-                {
-                    return Ok(());
+                if k.kind == KeyEventKind::Press {
+                    last_input = Instant::now();
+                    if dispatch_key(app, k.code, k.modifiers) {
+                        return Ok(());
+                    }
                 }
             } else if let Event::Resize(_, _) = ev {
                 fb.force_full_redraw();
+                last_input = Instant::now();
             }
         }
 

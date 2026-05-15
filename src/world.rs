@@ -61,7 +61,11 @@ fn load(asset: &[u8]) -> Map {
         width * height,
         "globe: decompressed size mismatch"
     );
-    Map { width, height, data }
+    Map {
+        width,
+        height,
+        data,
+    }
 }
 
 fn class_map() -> &'static Map {
@@ -109,7 +113,9 @@ pub fn sample_clouds(lat: f64, lon: f64) -> u8 {
 mod tests {
     use super::*;
 
-    fn rad(deg: f64) -> f64 { deg.to_radians() }
+    fn rad(deg: f64) -> f64 {
+        deg.to_radians()
+    }
 
     #[test]
     fn sample_class_is_deterministic() {
@@ -151,8 +157,16 @@ mod tests {
                 seen.insert(sample_class(rad(lat_deg as f64), rad(lon_deg as f64)));
             }
         }
-        assert!(seen.contains(&Class::DeepSea) || seen.contains(&Class::Sea), "Wasser fehlt: {:?}", seen);
-        assert!(seen.contains(&Class::Flatland), "Flatland fehlt: {:?}", seen);
+        assert!(
+            seen.contains(&Class::DeepSea) || seen.contains(&Class::Sea),
+            "Wasser fehlt: {:?}",
+            seen
+        );
+        assert!(
+            seen.contains(&Class::Flatland),
+            "Flatland fehlt: {:?}",
+            seen
+        );
         assert!(seen.len() >= 4, "Zu wenig Klassen: {:?}", seen);
     }
 
@@ -182,7 +196,12 @@ mod tests {
             }
         }
         assert!(nonzero > 50, "Kaum Lichter: {}/{}", nonzero, total);
-        assert!(nonzero < total / 2, "Zu viele Lichter: {}/{}", nonzero, total);
+        assert!(
+            nonzero < total / 2,
+            "Zu viele Lichter: {}/{}",
+            nonzero,
+            total
+        );
     }
 
     #[test]
@@ -192,9 +211,18 @@ mod tests {
         for lat_deg in (-80..80).step_by(5) {
             for lon_deg in (-180..180).step_by(5) {
                 let c = sample_clouds(rad(lat_deg as f64), rad(lon_deg as f64));
-                if c > 30 { covered += 1; } else { clear += 1; }
+                if c > 30 {
+                    covered += 1;
+                } else {
+                    clear += 1;
+                }
             }
         }
-        assert!(covered > 50 && clear > 50, "covered={}, clear={}", covered, clear);
+        assert!(
+            covered > 50 && clear > 50,
+            "covered={}, clear={}",
+            covered,
+            clear
+        );
     }
 }

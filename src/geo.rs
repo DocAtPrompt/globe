@@ -2,9 +2,7 @@
 
 use chrono::{Local, Offset};
 
-use crate::constants::{
-    HOME_DEFAULT_LAT_NORTH, HOME_FALLBACK_LAT, HOME_FALLBACK_LON,
-};
+use crate::constants::{HOME_DEFAULT_LAT_NORTH, HOME_FALLBACK_LAT, HOME_FALLBACK_LON};
 
 /// `--home`/`-h` CLI-Argument parsen. Erwartet `"LAT,LON"` in Grad.
 /// Toleriert Whitespace und gibt aussagekräftige Fehler zurück.

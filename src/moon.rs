@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 
 use crate::sun::{julian_day, sun_direction};
-use crate::vec3::{V3, from_lat_lon};
+use crate::vec3::{from_lat_lon, V3};
 
 const EARTH_RADIUS_KM: f64 = 6371.0;
 
@@ -38,8 +38,8 @@ pub fn position(now: DateTime<Utc>) -> SubLunar {
     let sin_decl =
         beta_rad.sin() * eps_rad.cos() + beta_rad.cos() * eps_rad.sin() * lambda_rad.sin();
     let decl_rad = sin_decl.clamp(-1.0, 1.0).asin();
-    let alpha_rad = (lambda_rad.sin() * eps_rad.cos() - beta_rad.tan() * eps_rad.sin())
-        .atan2(lambda_rad.cos());
+    let alpha_rad =
+        (lambda_rad.sin() * eps_rad.cos() - beta_rad.tan() * eps_rad.sin()).atan2(lambda_rad.cos());
     let alpha_deg = alpha_rad.to_degrees().rem_euclid(360.0);
 
     // GMST → Sublunar-Lon (gleiche Konvention wie sun::subsolar_point)
