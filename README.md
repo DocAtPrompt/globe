@@ -2,6 +2,8 @@
 
 Ein rotierender Globus für dein Terminal — mit echtem Sonnenstand, Tag/Nacht-Grenze in Echtzeit, Stadtlichtern auf der Nachtseite, Wolken-Overlay, Sterne, Sonne und Mond, und optionalen Hilfslinien für Äquator und Greenwich-Meridian.
 
+![globe rendered in a terminal: Asia at noon with city lights, atmospheric glow, moon in the night sky](docs/screenshot.png)
+
 ```
 cargo run --release
 ```
