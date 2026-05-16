@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser, ValueEnum};
     disable_help_flag = true
 )]
 pub struct Cli {
-    /// Home-Position als "LAT,LON" in Grad. Default: aus System-Timezone abgeleitet.
+    /// Home position as "LAT,LON" in degrees. Default: derived from the system timezone.
     #[arg(short = 'h', long, value_name = "LAT,LON")]
     pub home: Option<String>,
 
@@ -18,24 +18,25 @@ pub struct Cli {
     #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u32).range(1..=120))]
     pub fps: u32,
 
-    /// Render-Modus (default blocks).
+    /// Render mode (default blocks).
     #[arg(long, value_enum, default_value_t = ModeArg::Blocks)]
     pub mode: ModeArg,
 
-    /// Deaktiviert ANSI-Farben (entspricht --mode plain).
+    /// Disable ANSI colors (same as --mode plain).
     #[arg(long, default_value_t = false)]
     pub no_color: bool,
 
-    /// Snapshot-Modus: ein Frame in stdout schreiben und beenden.
+    /// Snapshot mode: render one frame to stdout and exit.
     #[arg(long, default_value_t = false)]
     pub snapshot: bool,
 
-    /// Cell-Aspect (Verhältnis Cell-Höhe / Cell-Breite). Default 2.0 stimmt
-    /// für SF Mono, Menlo etc. — bei vertikal gestrecktem Globus ggf. erhöhen.
+    /// Cell-aspect ratio (cell height / cell width). Default 2.0 fits SF Mono,
+    /// Menlo, and most modern monospace fonts — raise it if the globe looks
+    /// vertically stretched.
     #[arg(long, default_value_t = 2.0)]
     pub cell_aspect: f64,
 
-    /// Hilfe anzeigen.
+    /// Show help.
     #[arg(long, action = ArgAction::Help)]
     pub help: Option<bool>,
 }

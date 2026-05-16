@@ -10,24 +10,24 @@ pub fn parse_home_arg(s: &str) -> Result<(f64, f64), String> {
     let parts: Vec<&str> = s.split(',').map(str::trim).collect();
     if parts.len() != 2 {
         return Err(format!(
-            "erwartet 'LAT,LON' (zwei kommagetrennte Zahlen), bekommen: {:?}",
+            "expected 'LAT,LON' (two comma-separated numbers), got: {:?}",
             s
         ));
     }
     let lat: f64 = parts[0]
         .parse()
-        .map_err(|_| format!("Lat konnte nicht als Zahl gelesen werden: {:?}", parts[0]))?;
+        .map_err(|_| format!("lat is not a number: {:?}", parts[0]))?;
     let lon: f64 = parts[1]
         .parse()
-        .map_err(|_| format!("Lon konnte nicht als Zahl gelesen werden: {:?}", parts[1]))?;
+        .map_err(|_| format!("lon is not a number: {:?}", parts[1]))?;
     if !lat.is_finite() || !lon.is_finite() {
-        return Err("Lat/Lon dürfen nicht NaN oder unendlich sein".into());
+        return Err("lat/lon must not be NaN or infinite".into());
     }
     if !(-90.0..=90.0).contains(&lat) {
-        return Err(format!("Lat außerhalb [-90, 90]: {}", lat));
+        return Err(format!("lat outside [-90, 90]: {}", lat));
     }
     if !(-180.0..=180.0).contains(&lon) {
-        return Err(format!("Lon außerhalb [-180, 180]: {}", lon));
+        return Err(format!("lon outside [-180, 180]: {}", lon));
     }
     Ok((lat, lon))
 }

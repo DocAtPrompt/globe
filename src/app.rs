@@ -554,25 +554,25 @@ impl AppState {
 
     fn draw_help(&self, fb: &mut FrameBuffer) {
         let lines = [
-            "globe — Tastatur",
+            "globe — keys",
             "",
-            "  ←→↑↓        Erde drehen (Lat/Lon)",
-            "  Shift+Pfeil Feinrotation",
-            "  + −         Zoom rein/raus",
-            "  0           Zoom-Reset",
-            "  h           Home-Position",
-            "  s           Subsolar-Position",
-            "  f           Freeze toggle (Pfeile → Sonne)",
-            "  Space       Auto-Rotation toggle",
-            "  , .         Rotations-Speed −/+",
-            "  m           Modus blocks/ascii/plain",
-            "  c           Wolken-Layer ein/aus",
-            "  e           Äquator-Linie ein/aus",
-            "  g           Greenwich-Meridian ein/aus",
-            "  ( )         Cell-Aspect anpassen (Globus runder)",
-            "  r           Defaults zurück (Position bleibt)",
-            "  ?           Hilfe ein/aus",
-            "  q / Esc     Beenden",
+            "  ←→↑↓        rotate earth (lat/lon)",
+            "  Shift+arrow fine rotation (10× smaller step)",
+            "  + −         zoom in/out",
+            "  0           reset zoom",
+            "  h           jump to home position",
+            "  s           jump to subsolar position",
+            "  f           freeze toggle (arrows move the sun)",
+            "  Space       toggle auto-rotation",
+            "  , .         rotation speed −/+",
+            "  m           cycle mode blocks/ascii/plain",
+            "  c           toggle cloud layer",
+            "  e           toggle equator line",
+            "  g           toggle Greenwich meridian",
+            "  ( )         adjust cell-aspect",
+            "  r           restore defaults (position kept)",
+            "  ?           toggle this help",
+            "  q / Esc     quit",
         ];
         let cols = fb.cols();
         let rows = fb.rows();
@@ -871,15 +871,15 @@ fn moon_phase_char(illum: f64) -> char {
 
 fn moon_phase_label(illum: f64) -> &'static str {
     if illum < 0.05 {
-        "Neumond"
+        "New"
     } else if illum < 0.25 {
-        "Sichel"
+        "Crescent"
     } else if illum < 0.55 {
-        "Halbmond"
+        "Quarter"
     } else if illum < 0.85 {
         "Gibbous"
     } else {
-        "Vollmond"
+        "Full"
     }
 }
 
