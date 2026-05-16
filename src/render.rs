@@ -138,25 +138,32 @@ pub fn rgb_to_ansi(r: u8, g: u8, b: u8) -> u8 {
 
 // ----- Klassen-Paletten ------------------------------------------------------
 
+// Palette tuned for the ANSI 256-cube quantizer. The cube cutoffs sit at
+// 48, 115, 155, 195, 235. If a channel sits just above 48 while the others
+// fall below it, the cube reduction promotes that single channel to value 1
+// while clamping the others to 0 — which materializes as a pure-primary
+// color (e.g. dark red for (≥48, <48, <48)).
+// To avoid that, every land class keeps r ≈ g; pure greys keep r == g == b
+// so they hit the dedicated greyscale shortcut.
 pub fn palette_day(c: Class) -> (u8, u8, u8) {
     match c {
-        Class::DeepSea => (10, 20, 70),
-        Class::Sea => (30, 80, 140),
-        Class::Flatland => (50, 120, 50),
-        Class::Upland => (120, 100, 50),
-        Class::Mountain => (140, 140, 140),
-        Class::Ice => (220, 220, 230),
+        Class::DeepSea => (10, 30, 140),
+        Class::Sea => (50, 130, 200),
+        Class::Flatland => (60, 170, 60),
+        Class::Upland => (170, 170, 70), // balanced r == g, was (120, 100, 50)
+        Class::Mountain => (170, 170, 170),
+        Class::Ice => (240, 240, 240),
     }
 }
 
 pub fn palette_night(c: Class) -> (u8, u8, u8) {
     match c {
-        Class::DeepSea => (3, 6, 20),
-        Class::Sea => (8, 20, 40),
-        Class::Flatland => (15, 40, 20),
-        Class::Upland => (40, 35, 20),
-        Class::Mountain => (50, 50, 50),
-        Class::Ice => (100, 100, 110),
+        Class::DeepSea => (3, 6, 30),
+        Class::Sea => (10, 30, 60),
+        Class::Flatland => (20, 50, 20),
+        Class::Upland => (60, 60, 30), // balanced r == g
+        Class::Mountain => (60, 60, 60),
+        Class::Ice => (120, 120, 130),
     }
 }
 
