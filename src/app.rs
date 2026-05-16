@@ -28,10 +28,10 @@ pub const COARSE_LON_STEP_DEG: f64 = 5.0;
 const RAMP: &[char] = &[
     ' ', '.', '\'', ':', ';', ',', '-', '~', '!', '=', '+', '*', 'o', '#', '%', '&', '@',
 ];
-/// Spreizt die Lambert-Verteilung (große Tagseite-Fläche bei hohem cos θ) auf den
-/// vollen Rampen-Bereich. Werte > 1 verschieben sichtbares Bild Richtung dunklere
-/// Mitteltöne.
-const ASCII_GAMMA: f64 = 1.6;
+/// Stretches the Lambert distribution across the full ramp. Values > 1 push
+/// midtones darker, < 1 push them brighter. 1.0 = linear. Empirically 0.8 keeps
+/// the day side comfortably bright while preserving terminator detail.
+const ASCII_GAMMA: f64 = 0.8;
 
 /// Albedo-Multiplikator pro Klasse — sorgt im ASCII/Plain-Modus dafür, dass
 /// Kontinent-Strukturen über die Helligkeit erkennbar sind (Wasser dunkler,
@@ -39,13 +39,15 @@ const ASCII_GAMMA: f64 = 1.6;
 /// die Information; der Faktor verstärkt zusätzlich die Konturen.
 fn class_albedo(c: crate::world::Class) -> f64 {
     use crate::world::Class;
+    // Klassen-Differenzierung bleibt erhalten (Wasser dunkler als Land), aber
+    // alle Werte sind angehoben, damit die ASCII-Welt insgesamt heller wirkt.
     match c {
-        Class::DeepSea => 0.40,
-        Class::Sea => 0.55,
-        Class::Flatland => 0.85,
-        Class::Upland => 0.95,
-        Class::Mountain => 1.00,
-        Class::Ice => 1.10,
+        Class::DeepSea => 0.60,
+        Class::Sea => 0.75,
+        Class::Flatland => 0.95,
+        Class::Upland => 1.00,
+        Class::Mountain => 1.05,
+        Class::Ice => 1.15,
     }
 }
 
@@ -797,10 +799,13 @@ fn shade_ascii(
         };
         let fg = if color {
             let day = palette_day(class);
+            // Farb-Helligkeit: minimal 50% selbst am Terminator, voll bei
+            // Subsolar. Vorher 0.3+0.7*lambert war am Übergang zu finster.
+            let bright = 0.5 + 0.5 * lambert;
             let mut rgb = (
-                (day.0 as f64 * (0.3 + 0.7 * lambert)) as u8,
-                (day.1 as f64 * (0.3 + 0.7 * lambert)) as u8,
-                (day.2 as f64 * (0.3 + 0.7 * lambert)) as u8,
+                (day.0 as f64 * bright) as u8,
+                (day.1 as f64 * bright) as u8,
+                (day.2 as f64 * bright) as u8,
             );
             if eq_intensity > 0.0 {
                 rgb = mix_rgb_u8(rgb, (255, 220, 60), eq_intensity);
