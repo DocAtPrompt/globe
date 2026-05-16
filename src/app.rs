@@ -169,7 +169,10 @@ impl AppState {
     pub fn effective_sun_dir(&self, now: DateTime<Utc>) -> V3 {
         let base = self.freeze_anchor.unwrap_or(now);
         let (lat_deg, lon_deg) = sun::subsolar_point(base);
-        let lat = (lat_deg + self.sun_delta_deg.0).clamp(-90.0, 90.0);
+        // Sonne wandert in Wirklichkeit nur zwischen den Wendekreisen — never
+        // over the poles. Clamp on the *effective* (live + Δ) latitude so the
+        // user can push the Δ but never see the sun above the tropics.
+        let lat = (lat_deg + self.sun_delta_deg.0).clamp(-23.45, 23.45);
         let lon = lon_deg + self.sun_delta_deg.1;
         // subsolar_point liefert den Subsolar im *Erd-fixed* Frame (enthält GMST).
         // Für Lighting brauchen wir den Vektor im *Welt-Frame* — daher um die
