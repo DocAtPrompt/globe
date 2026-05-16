@@ -772,29 +772,43 @@ fn shade_ascii(
         let lambert = raw.max(0.0).powf(ASCII_GAMMA);
         let visual = (lambert * class_albedo(class)).clamp(0.0, 1.0);
         let idx = ((visual * (RAMP.len() as f64 - 0.01)) as usize).min(RAMP.len() - 1);
-        let on_equator = equator_visible && hit.point.1.abs() < EQUATOR_HALF_WIDTH;
-        let on_meridian = meridian_visible && lon.abs() < MERIDIAN_HALF_WIDTH;
-        let ch = if on_equator && on_meridian {
-            '+'
-        } else if on_equator {
-            '='
-        } else if on_meridian {
-            '|'
+        let ch = RAMP[idx];
+        // Geo-Linien: weicher Farb-Blend statt hartem Char-Override (war im
+        // Vergleich zum Blocks-Modus deutlich aufdringlicher als beabsichtigt).
+        let eq_intensity = if equator_visible {
+            let d = hit.point.1.abs();
+            if d < EQUATOR_HALF_WIDTH {
+                LINE_PEAK_ALPHA * (1.0 - d / EQUATOR_HALF_WIDTH)
+            } else {
+                0.0
+            }
         } else {
-            RAMP[idx]
+            0.0
+        };
+        let mer_intensity = if meridian_visible {
+            let d = lon.abs();
+            if d < MERIDIAN_HALF_WIDTH {
+                LINE_PEAK_ALPHA * (1.0 - d / MERIDIAN_HALF_WIDTH)
+            } else {
+                0.0
+            }
+        } else {
+            0.0
         };
         let fg = if color {
-            if on_equator {
-                rgb_to_ansi(255, 220, 60)
-            } else if on_meridian {
-                rgb_to_ansi(110, 200, 255)
-            } else {
-                let day = palette_day(class);
-                let r = (day.0 as f64 * (0.3 + 0.7 * lambert)) as u8;
-                let g = (day.1 as f64 * (0.3 + 0.7 * lambert)) as u8;
-                let b = (day.2 as f64 * (0.3 + 0.7 * lambert)) as u8;
-                rgb_to_ansi(r, g, b)
+            let day = palette_day(class);
+            let mut rgb = (
+                (day.0 as f64 * (0.3 + 0.7 * lambert)) as u8,
+                (day.1 as f64 * (0.3 + 0.7 * lambert)) as u8,
+                (day.2 as f64 * (0.3 + 0.7 * lambert)) as u8,
+            );
+            if eq_intensity > 0.0 {
+                rgb = mix_rgb_u8(rgb, (255, 220, 60), eq_intensity);
             }
+            if mer_intensity > 0.0 {
+                rgb = mix_rgb_u8(rgb, (110, 200, 255), mer_intensity);
+            }
+            rgb_to_ansi(rgb.0, rgb.1, rgb.2)
         } else {
             15
         };
@@ -802,8 +816,36 @@ fn shade_ascii(
     } else {
         let perp = ray_perp_to_origin(ray);
         let gl = glow_intensity(perp);
-        if gl > 0.5 {
-            return ('.', if color { rgb_to_ansi(30, 70, 150) } else { 15 });
+        if gl > 0.0 {
+            // Atmosphären-Saum: gleiche Tag/Nacht-Farb-Logik wie in Blocks.
+            let t_close = -ray.origin.dot(ray.dir);
+            let tangent = ray.origin.add(ray.dir.mul(t_close));
+            let light = lighting(tangent.norm(), sun_dir);
+            let (r, g, b) = if light > 0.5 {
+                (220.0, 200.0, 120.0)
+            } else if light > 0.15 {
+                (240.0, 150.0, 60.0)
+            } else if light > 0.02 {
+                (160.0, 90.0, 110.0)
+            } else {
+                (30.0, 70.0, 150.0)
+            };
+            // Char: schwacher Punkt am inneren Halo, kompakter am Sphere-Rand.
+            let ch = if gl > 0.6 {
+                '·'
+            } else if gl > 0.3 {
+                '.'
+            } else {
+                '.'
+            };
+            return (
+                ch,
+                if color {
+                    rgb_to_ansi((r * gl) as u8, (g * gl) as u8, (b * gl) as u8)
+                } else {
+                    15
+                },
+            );
         }
         match star_at(pix_x, pix_y) {
             Some(Star::Bright) => {
