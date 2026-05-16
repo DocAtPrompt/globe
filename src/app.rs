@@ -712,14 +712,14 @@ fn shade_color(
             let tangent = ray.origin.add(ray.dir.mul(t_close));
             let light = lighting(tangent.norm(), sun_dir);
             let (r, gn, b) = if light > 0.5 {
-                // voll auf Tagseite: hell gelb-weiß (Tageshimmel-Streuung)
-                (220.0, 200.0, 120.0)
+                // voll auf Tagseite: hell-warm, neutral
+                (200.0, 200.0, 150.0)
             } else if light > 0.15 {
-                // Sonnenauf-/-untergang: warm orange-gelb
-                (240.0, 150.0, 60.0)
+                // Sonnenauf-/-untergang: warm beige (weniger aggressiv)
+                (200.0, 170.0, 110.0)
             } else if light > 0.02 {
-                // Dämmerungssaum: rötlich-violett
-                (160.0, 90.0, 110.0)
+                // Dämmerungssaum: kühl-lila statt rosa
+                (120.0, 110.0, 140.0)
             } else {
                 // Nachtseite: kaltes Blau (klassischer Atmosphären-Saum)
                 (30.0, 70.0, 150.0)
@@ -840,11 +840,11 @@ fn shade_ascii(
             let tangent = ray.origin.add(ray.dir.mul(t_close));
             let light = lighting(tangent.norm(), sun_dir);
             let (r, g, b) = if light > 0.5 {
-                (220.0, 200.0, 120.0)
+                (200.0, 200.0, 150.0)
             } else if light > 0.15 {
-                (240.0, 150.0, 60.0)
+                (200.0, 170.0, 110.0)
             } else if light > 0.02 {
-                (160.0, 90.0, 110.0)
+                (120.0, 110.0, 140.0)
             } else {
                 (30.0, 70.0, 150.0)
             };
