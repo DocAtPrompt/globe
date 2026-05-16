@@ -426,7 +426,7 @@ impl AppState {
             let y_sample = (y as f64) * self.cell_aspect + self.cell_aspect * 0.5;
             for x in 0..cols {
                 let ray = ray_at_screen(x as f64 + 0.5, y_sample, w, sub_h, &self.camera);
-                let (ch, fg) = shade_ascii(
+                let (ch, fg, bg) = shade_ascii(
                     &ray,
                     sun_dir,
                     self.earth_rotation_rad,
@@ -437,7 +437,7 @@ impl AppState {
                     self.equator_visible,
                     self.meridian_visible,
                 );
-                fb.put(x, y, Cell::new(ch, if color { fg } else { 15 }, 16));
+                fb.put(x, y, Cell::new(ch, if color { fg } else { 15 }, bg));
             }
         }
     }
@@ -747,7 +747,7 @@ fn shade_ascii(
     color: bool,
     equator_visible: bool,
     meridian_visible: bool,
-) -> (char, u8) {
+) -> (char, u8, u8) {
     let earth = ray_sphere(ray, 1.0);
     if let Some(hit) = earth {
         let (lat, lon) = hit_to_geo(hit.point, earth_rot);
@@ -764,9 +764,9 @@ fn shade_ascii(
                 } else {
                     15
                 };
-                return ('·', fg);
+                return ('·', fg, 16);
             }
-            return (' ', 16);
+            return (' ', 16, 16);
         }
 
         // Gamma-Stretch + Klassen-Albedo: ohne diese beiden Korrekturen sehen alle
@@ -797,27 +797,40 @@ fn shade_ascii(
         } else {
             0.0
         };
-        let fg = if color {
+        let (fg, bg) = if color {
             let day = palette_day(class);
-            // Farb-Helligkeit: minimal 50% selbst am Terminator, voll bei
-            // Subsolar. Vorher 0.3+0.7*lambert war am Übergang zu finster.
-            let bright = 0.5 + 0.5 * lambert;
-            let mut rgb = (
-                (day.0 as f64 * bright) as u8,
-                (day.1 as f64 * bright) as u8,
-                (day.2 as f64 * bright) as u8,
+            // Foreground: helle Variante der Klassenfarbe für das Char-Glyph.
+            let bright = 0.6 + 0.4 * lambert;
+            let mut fg_rgb = (
+                (day.0 as f64 * bright).min(255.0) as u8,
+                (day.1 as f64 * bright).min(255.0) as u8,
+                (day.2 as f64 * bright).min(255.0) as u8,
+            );
+            // Background: gedämpfte Klassenfarbe — füllt die Zelle und liefert
+            // den eigentlichen Farb-Eindruck. Lambert-skaliert, damit Nachtrand
+            // dunkler wird.
+            let dim = 0.25 + 0.35 * lambert;
+            let mut bg_rgb = (
+                (day.0 as f64 * dim) as u8,
+                (day.1 as f64 * dim) as u8,
+                (day.2 as f64 * dim) as u8,
             );
             if eq_intensity > 0.0 {
-                rgb = mix_rgb_u8(rgb, (255, 220, 60), eq_intensity);
+                fg_rgb = mix_rgb_u8(fg_rgb, (255, 220, 60), eq_intensity);
+                bg_rgb = mix_rgb_u8(bg_rgb, (160, 130, 30), eq_intensity);
             }
             if mer_intensity > 0.0 {
-                rgb = mix_rgb_u8(rgb, (110, 200, 255), mer_intensity);
+                fg_rgb = mix_rgb_u8(fg_rgb, (110, 200, 255), mer_intensity);
+                bg_rgb = mix_rgb_u8(bg_rgb, (50, 110, 160), mer_intensity);
             }
-            rgb_to_ansi(rgb.0, rgb.1, rgb.2)
+            (
+                rgb_to_ansi(fg_rgb.0, fg_rgb.1, fg_rgb.2),
+                rgb_to_ansi(bg_rgb.0, bg_rgb.1, bg_rgb.2),
+            )
         } else {
-            15
+            (15, 16)
         };
-        (ch, fg)
+        (ch, fg, bg)
     } else {
         let perp = ray_perp_to_origin(ray);
         let gl = glow_intensity(perp);
@@ -850,6 +863,7 @@ fn shade_ascii(
                 } else {
                     15
                 },
+                16,
             );
         }
         match star_at(pix_x, pix_y) {
@@ -861,7 +875,8 @@ fn shade_ascii(
                     } else {
                         15
                     },
-                )
+                    16,
+                );
             }
             Some(Star::Medium) => {
                 return (
@@ -871,7 +886,8 @@ fn shade_ascii(
                     } else {
                         15
                     },
-                )
+                    16,
+                );
             }
             Some(Star::Dim) => {
                 return (
@@ -881,11 +897,12 @@ fn shade_ascii(
                     } else {
                         15
                     },
-                )
+                    16,
+                );
             }
             None => {}
         }
-        (' ', 16)
+        (' ', 16, 16)
     }
 }
 
