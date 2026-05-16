@@ -754,7 +754,15 @@ fn shade_ascii(
         let class = world::sample_class(lat, lon);
         // Lambert-Diffuse (max(0, n·s)) — sanfter Verlauf von Tagseite zu Nacht.
         let raw = hit.point.dot(sun_dir);
-        let night_side = raw < 0.05;
+        // Plain (color=false) zeigt die Erde testweise OHNE Tag/Nacht-Effekt:
+        // jeder Pixel sieht nur die Klassen-Albedo, die ganze Sphere wirkt
+        // wie eine projiziertes Landkarte.
+        let lambert = if color {
+            raw.max(0.0).powf(ASCII_GAMMA)
+        } else {
+            1.0
+        };
+        let night_side = color && raw < 0.05;
 
         if night_side {
             let strength = world::sample_lights(lat, lon);
@@ -768,10 +776,6 @@ fn shade_ascii(
             }
             return (' ', 16, 16);
         }
-
-        // Gamma-Stretch + Klassen-Albedo: ohne diese beiden Korrekturen sehen alle
-        // Pixel der Tagseite gleich hell aus und Kontinent-Konturen verschwinden.
-        let lambert = raw.max(0.0).powf(ASCII_GAMMA);
         let visual = (lambert * class_albedo(class)).clamp(0.0, 1.0);
         let idx = ((visual * (RAMP.len() as f64 - 0.01)) as usize).min(RAMP.len() - 1);
         let ch = RAMP[idx];
